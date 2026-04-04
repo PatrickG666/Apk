@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- EroProfile dark theme colors -->
+    <color name="ep_background">#1A1A1A</color>
+    <color name="ep_surface">#252525</color>
+    <color name="ep_surface_variant">#2E2E2E</color>
+    <color name="ep_card">#2A2A2A</color>
+
+    <color name="ep_orange">#FF6600</color>
+    <color name="ep_orange_dark">#CC5200</color>
+    <color name="ep_orange_light">#FF8533</color>
+
+    <color name="ep_text_primary">#FFFFFF</color>
+    <color name="ep_text_secondary">#AAAAAA</color>
+    <color name="ep_text_hint">#666666</color>
+
+    <color name="ep_divider">#333333</color>
+    <color name="ep_overlay">#80000000</color>
+
+    <color name="ep_duration_bg">#CC000000</color>
+    <color name="ep_hd_badge">#FF6600</color>
+
+    <!-- System colors -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/nav_home">
+
+    <fragment
+        android:id="@+id/nav_home"
+        android:name="com.eroprofile.app.ui.home.HomeFragment"
+        android:label="Home" />
+
+    <fragment
+        android:id="@+id/nav_search"
+        android:name="com.eroprofile.app.ui.search.SearchFragment"
+        android:label="Cerca" />
+
+    <fragment
+        android:id="@+id/nav_categories"
+        android:name="com.eroprofile.app.ui.categories.CategoriesFragment"
+        android:label="Categorie" />
+
+</navigation>

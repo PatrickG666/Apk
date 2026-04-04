@@ -1,0 +1,16 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+*.ap_
+local.properties
+.idea/
+*.iml
+*.ipr
+*.iws
+captures/
+.externalNativeBuild/
+.cxx/
+google-services.json

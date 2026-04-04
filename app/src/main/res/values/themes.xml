@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EroProfile" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/ep_orange</item>
+        <item name="colorPrimaryVariant">@color/ep_orange_dark</item>
+        <item name="colorSecondary">@color/ep_orange</item>
+        <item name="colorSecondaryVariant">@color/ep_orange_dark</item>
+        <item name="android:colorBackground">@color/ep_background</item>
+        <item name="colorSurface">@color/ep_surface</item>
+        <item name="colorOnPrimary">@color/ep_text_primary</item>
+        <item name="colorOnBackground">@color/ep_text_primary</item>
+        <item name="colorOnSurface">@color/ep_text_primary</item>
+        <item name="android:textColorPrimary">@color/ep_text_primary</item>
+        <item name="android:textColorSecondary">@color/ep_text_secondary</item>
+        <item name="android:statusBarColor">@color/ep_surface</item>
+        <item name="android:navigationBarColor">@color/ep_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.EroProfile.FullScreen" parent="Theme.EroProfile">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+
+    <style name="VideoTitleText">
+        <item name="android:textColor">@color/ep_text_primary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="VideoMetaText">
+        <item name="android:textColor">@color/ep_text_secondary</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+</resources>

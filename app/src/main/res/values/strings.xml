@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">EroProfile</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Cerca</string>
+    <string name="nav_categories">Categorie</string>
+    <string name="nav_favorites">Preferiti</string>
+    <string name="search_hint">Cerca video…</string>
+    <string name="loading">Caricamento…</string>
+    <string name="error_loading">Errore nel caricamento. Riprova.</string>
+    <string name="retry">Riprova</string>
+    <string name="no_results">Nessun risultato trovato.</string>
+    <string name="views">visualizzazioni</string>
+    <string name="sort_recent">Recenti</string>
+    <string name="sort_popular">Più visti</string>
+    <string name="sort_top_rated">Meglio valutati</string>
+    <string name="all_categories">Tutte le categorie</string>
+    <string name="video_player">Riproduzione video</string>
+    <string name="open_browser">Apri nel browser</string>
+    <string name="hd_badge">HD</string>
+</resources>
