@@ -25,6 +25,10 @@ abstract class BaseWebFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         val wv = WebView(requireContext())
+        wv.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
         wv.setBackgroundColor(Color.BLACK)
         wv.settings.apply {
             javaScriptEnabled = true

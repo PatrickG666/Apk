@@ -59,7 +59,9 @@ class SearchFragment : BaseWebFragment() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ))
             addView(webView, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
             ))
         }
     }
