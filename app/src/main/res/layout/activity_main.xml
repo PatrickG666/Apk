@@ -59,7 +59,6 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="@color/ep_surface"
-        app:itemActiveIndicatorColor="@color/ep_orange"
         app:itemIconTint="@color/bottom_nav_color"
         app:itemTextColor="@color/bottom_nav_color"
         app:labelVisibilityMode="labeled"
