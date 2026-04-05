@@ -1,5 +1,6 @@
 package com.eroprofile.app.data.scraper
 
+import android.util.Log
 import com.eroprofile.app.data.models.Category
 import com.eroprofile.app.data.models.Video
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,21 @@ class EroProfileScraper {
             try {
                 val url = "$BASE_URL/m/video/list?sort=$sort&p=$page"
                 val doc = fetchDocument(url)
+                // Debug: log page title and anchor hrefs containing "video"
+                Log.d("EroScraper", "Page title: ${doc.title()}")
+                val allHrefs = doc.select("a[href]").map { it.attr("href") }
+                    .filter { it.contains("video", ignoreCase = true) }.take(10)
+                Log.d("EroScraper", "Video hrefs found: $allHrefs")
+                val imgCount = doc.select("img").size
+                Log.d("EroScraper", "Total <img> tags: $imgCount")
+                val aWithImg = doc.select("a:has(img)").size
+                Log.d("EroScraper", "<a> containing <img>: $aWithImg")
                 val videos = parseVideoList(doc)
+                if (videos.isEmpty()) {
+                    // Include debug info in error so user can see it
+                    val debugInfo = "title='${doc.title()}' | video-hrefs=$allHrefs | imgs=$imgCount | a-with-img=$aWithImg"
+                    return@withContext Result.failure(IOException("Nessun video trovato.\n$debugInfo"))
+                }
                 Result.success(videos)
             } catch (e: Exception) {
                 Result.failure(e)

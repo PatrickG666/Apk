@@ -116,9 +116,10 @@
             android:layout_height="wrap_content"
             android:text="@string/error_loading"
             android:textColor="@color/ep_text_secondary"
-            android:textSize="15sp"
+            android:textSize="12sp"
             android:padding="16dp"
-            android:gravity="center" />
+            android:gravity="center"
+            android:maxWidth="320dp" />
 
         <Button
             android:id="@+id/btnRetry"
