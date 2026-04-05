@@ -92,85 +92,97 @@ class EroProfileScraper {
         }
 
     private fun fetchDocument(url: String): Document {
-        val request = Request.Builder().url(url).get().build()
+        val request = Request.Builder()
+            .url(url)
+            .header("Cookie", "")
+            .header("Accept-Encoding", "identity")
+            .get()
+            .build()
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-        val body = response.body?.string() ?: throw IOException("Empty response")
+        if (!response.isSuccessful) {
+            throw IOException("Errore HTTP ${response.code} — il sito potrebbe richiedere login o bloccare le richieste automatiche")
+        }
+        val body = response.body?.string() ?: throw IOException("Risposta vuota dal server")
+        if (body.contains("login", ignoreCase = true) && body.contains("password", ignoreCase = true) && body.length < 5000) {
+            throw IOException("Il sito richiede login per visualizzare i contenuti")
+        }
         return Jsoup.parse(body, url)
     }
 
     private fun parseVideoList(doc: Document): List<Video> {
         val videos = mutableListOf<Video>()
 
-        // eroprofile video list items — try multiple selector patterns
-        val items = doc.select(
-            "div.videoListWrapper, ul.list-videos li, div.thumb-item, " +
-            ".videoListItem, li.video-item, .video-box, div.thumbBlock, " +
-            "div.videoBlock, li.videoItem, div.video-item, div.thumb, " +
-            "ul.videoList li, div.item[class*=video], li[class*=video], " +
-            "div[class*=thumb], div[class*=video]"
-        ).filter { el ->
-            // Keep only elements that contain a link to a video
-            el.selectFirst("a[href*=video]") != null && el.selectFirst("img") != null
-        }
+        // Structure-based approach: find all <a> tags that contain an <img>
+        // and whose href looks like a video page. No class names needed.
+        val videoLinks = doc.select("a:has(img)").filter { a ->
+            val href = a.attr("abs:href").ifEmpty { a.attr("href") }
+            href.isNotEmpty() && (
+                href.contains("/video/view") ||
+                href.contains("/m/video/") ||
+                href.contains("/videos/") ||
+                href.matches(Regex(".*/(v|video)/[0-9a-zA-Z_-]+.*"))
+            )
+        }.distinctBy { it.attr("abs:href").ifEmpty { it.attr("href") } }
 
-        // Fallback: find any anchor that links to a video view page
-        val effectiveItems = if (items.isEmpty()) {
-            doc.select("a[href*=/m/video/view], a[href*=/video/view]")
-                .map { it.parent() ?: it }
-                .distinctBy { it.attr("href").ifEmpty { it.html() } }
-        } else items
-
-        for (item in effectiveItems) {
+        for (linkEl in videoLinks) {
             try {
-                // Try multiple selector patterns to handle site changes
-                val linkEl = item.selectFirst("a[href*=/m/video/view], a[href*=/video/view], a[href*=/video/]") ?: continue
                 val href = linkEl.attr("abs:href").ifEmpty { linkEl.attr("href") }
                 if (href.isEmpty()) continue
 
-                val title = item.selectFirst("span.title, .video-title, h3, .title, p.title")
-                    ?.text()?.trim()
-                    ?: linkEl.attr("title").trim()
-                    ?: item.selectFirst("img")?.attr("alt")?.trim()
-                    ?: ""
-
-                val thumbEl = item.selectFirst("img")
-                val thumbUrl = thumbEl?.let {
-                    it.attr("data-src").ifEmpty { it.attr("src") }
+                // Image / thumbnail
+                val imgEl = linkEl.selectFirst("img")
+                val thumbUrl = imgEl?.let {
+                    it.attr("data-src").ifEmpty {
+                        it.attr("data-lazy-src").ifEmpty { it.attr("src") }
+                    }
                 } ?: ""
 
-                val duration = item.selectFirst(".duration, span.duration, .time, .video-duration")
+                // Title: try link title attr, img alt, or nearby text
+                val title = linkEl.attr("title").trim().ifEmpty {
+                    imgEl?.attr("alt")?.trim().orEmpty().ifEmpty {
+                        // Look for a text element sibling or child
+                        val parent = linkEl.parent()
+                        parent?.selectFirst("p, span, h3, h4, div.title, div.name")
+                            ?.text()?.trim().orEmpty()
+                    }
+                }.ifEmpty { "Video" }
+
+                // Duration / views / rating — look in the link itself or its parent
+                val container = linkEl.parent() ?: linkEl
+                val duration = (linkEl.selectFirst("[class*=dur], [class*=time], [class*=length]")
+                    ?: container.selectFirst("[class*=dur], [class*=time], [class*=length]"))
                     ?.text()?.trim() ?: ""
 
-                val views = item.selectFirst(".views, span.views, .view-count")
-                    ?.text()?.trim()?.replace("[^0-9KMk,.]".toRegex(), "")?.trim() ?: ""
+                val views = (linkEl.selectFirst("[class*=view], [class*=count]")
+                    ?: container.selectFirst("[class*=view], [class*=count]"))
+                    ?.text()?.replace("[^0-9KMk.,]".toRegex(), "")?.trim() ?: ""
 
-                val rating = item.selectFirst(".rating, .score, .percent")
+                val rating = (linkEl.selectFirst("[class*=rat], [class*=score], [class*=percent]")
+                    ?: container.selectFirst("[class*=rat], [class*=score], [class*=percent]"))
                     ?.text()?.trim() ?: ""
 
-                val author = item.selectFirst(".username, .author, .user")
+                val author = (linkEl.selectFirst("[class*=user], [class*=author]")
+                    ?: container.selectFirst("[class*=user], [class*=author]"))
                     ?.text()?.trim() ?: ""
 
-                val isHd = item.selectFirst(".hd, .badge-hd, span.hd") != null ||
-                        item.text().contains("HD", ignoreCase = false)
+                val isHd = linkEl.selectFirst("[class*=hd], [class*=HD]") != null ||
+                        container.selectFirst("[class*=hd], [class*=HD]") != null
 
                 val id = extractVideoId(href)
 
-                if (title.isNotEmpty() || href.isNotEmpty()) {
-                    videos.add(
-                        Video(
-                            id = id,
-                            title = title.ifEmpty { "Video" },
-                            url = href,
-                            thumbnailUrl = thumbUrl,
-                            duration = duration,
-                            views = views,
-                            rating = rating,
-                            author = author,
-                            isHd = isHd
-                        )
+                videos.add(
+                    Video(
+                        id = id,
+                        title = title,
+                        url = href,
+                        thumbnailUrl = thumbUrl,
+                        duration = duration,
+                        views = views,
+                        rating = rating,
+                        author = author,
+                        isHd = isHd
                     )
-                }
+                )
             } catch (_: Exception) {
                 // Skip malformed items
             }
