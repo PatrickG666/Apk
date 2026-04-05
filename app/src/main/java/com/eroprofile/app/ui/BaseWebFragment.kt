@@ -74,21 +74,17 @@ abstract class BaseWebFragment : Fragment() {
 
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
                 val url = req.url.toString()
-                return when {
-                    url.contains(".m4v") || url.contains(".mp4") || url.contains(".m3u8") ||
-                    url.contains("/m/video/view") || url.contains("/video/view") -> {
-                        startActivity(Intent(requireContext(), VideoPlayerActivity::class.java).apply {
-                            putExtra(VideoPlayerActivity.EXTRA_URL, url)
-                            putExtra(VideoPlayerActivity.EXTRA_TITLE, "")
-                        })
-                        true
-                    }
-                    url.contains("eroprofile.com") -> false
-                    else -> {
-                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                        true
-                    }
+                // Only intercept actual video files → VideoPlayerActivity
+                // Let EVERYTHING else (including Cloudflare challenge redirects) load in the WebView
+                if (url.contains(".m4v") || url.contains(".mp4") || url.contains(".m3u8") ||
+                    url.contains("/m/video/view") || url.contains("/video/view")) {
+                    startActivity(Intent(requireContext(), VideoPlayerActivity::class.java).apply {
+                        putExtra(VideoPlayerActivity.EXTRA_URL, url)
+                        putExtra(VideoPlayerActivity.EXTRA_TITLE, "")
+                    })
+                    return true
                 }
+                return false  // let WebView handle all other URLs (Cloudflare, redirects, etc.)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
