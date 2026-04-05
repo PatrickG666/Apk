@@ -7,14 +7,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ProgressBar
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import android.widget.ProgressBar
 import androidx.fragment.app.Fragment
-import com.eroprofile.app.R
 import com.eroprofile.app.ui.video.VideoPlayerActivity
 
 abstract class BaseWebFragment : Fragment() {
@@ -24,102 +24,107 @@ abstract class BaseWebFragment : Fragment() {
 
     abstract val initialUrl: String
 
-    // Dark CSS injected after page load
     private val darkCss = """
         header, .site-header, nav.main-nav, .top-navigation,
-        .ad, .ads, .advertisement, .banner-ad, [id*=ad], [class*=banner-ad],
-        .cookie-notice, .popup, .modal-overlay, .install-app-banner,
-        .download-app, #downloadBanner { display: none !important; }
-        body, html { background-color: #1A1A1A !important; color: #E0E0E0 !important; }
+        .ad, .ads, .advertisement, [class*=banner-ad],
+        .cookie-notice, .popup, .modal-overlay,
+        .install-app-banner, .download-app, #downloadBanner { display: none !important; }
+        body, html { background: #1A1A1A !important; color: #E0E0E0 !important; }
         a { color: #FF6600 !important; }
-        .video-list, .list-videos, ul, li { background: #1A1A1A !important; }
     """.trimIndent().replace("\n", " ")
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
-    ): View {
-        val root = inflater.inflate(R.layout.fragment_webview, container, false)
-        webView = root.findViewById<WebView>(R.id.webView)
-        progressBar = root.findViewById<ProgressBar>(R.id.progressBar)
+    ): View = buildWebView()
 
-        webView?.settings?.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            mediaPlaybackRequiresUserGesture = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+    @SuppressLint("SetJavaScriptEnabled")
+    protected fun buildWebView(): FrameLayout {
+        val ctx = requireContext()
+
+        val bar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, 6
+            )
+            max = 100
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFF6600.toInt())
+            visibility = View.GONE
         }
+        progressBar = bar
 
-        webView?.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val url = request.url.toString()
-                return when {
-                    // Direct video file → ExoPlayer
-                    url.contains(".m4v") || url.contains(".mp4") || url.contains(".m3u8") -> {
-                        openVideoPlayer(url, "")
-                        true
-                    }
-                    // Video page → VideoPlayerActivity (loads in its own WebView)
-                    url.contains("/m/video/view") || url.contains("/video/view") -> {
-                        openVideoPlayer(url, "")
-                        true
-                    }
-                    // Keep eroprofile navigation inside this WebView
-                    url.contains("eroprofile.com") -> false
-                    // External links → system browser
-                    else -> {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        true
+        val wv = WebView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                cacheMode = WebSettings.LOAD_DEFAULT
+                userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
+                    val url = req.url.toString()
+                    return when {
+                        url.endsWith(".m4v") || url.endsWith(".mp4") || url.contains(".m3u8") -> {
+                            openPlayer(url, ""); true
+                        }
+                        url.contains("/m/video/view") || url.contains("/video/view") -> {
+                            openPlayer(url, ""); true
+                        }
+                        url.contains("eroprofile.com") -> false
+                        else -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true }
                     }
                 }
+                override fun onPageFinished(view: WebView, url: String) = injectCss(view)
             }
-
-            override fun onPageFinished(view: WebView, url: String) {
-                injectCss(view)
-            }
-        }
-
-        webView?.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                progressBar?.progress = newProgress
-                progressBar?.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView, p: Int) {
+                    bar.progress = p
+                    bar.visibility = if (p < 100) View.VISIBLE else View.GONE
+                }
             }
         }
+        webView = wv
 
-        webView?.loadUrl(initialUrl)
-        return root
+        wv.loadUrl(initialUrl)
+
+        return FrameLayout(ctx).apply {
+            setBackgroundColor(0xFF1A1A1A.toInt())
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            addView(wv)
+            addView(bar)
+        }
     }
 
     private fun injectCss(view: WebView) {
-        val js = """
-            (function() {
-                if (document.getElementById('ep_dark')) return;
-                var s = document.createElement('style');
-                s.id = 'ep_dark';
-                s.innerHTML = '${darkCss.replace("'", "\\'")}';
-                document.head && document.head.appendChild(s);
-            })();
-        """.trimIndent()
+        val js = """(function(){
+            if(document.getElementById('_ep'))return;
+            var s=document.createElement('style');
+            s.id='_ep';
+            s.innerHTML='${darkCss.replace("'","\\'")}';
+            document.head&&document.head.appendChild(s);
+        })();"""
         view.evaluateJavascript(js, null)
     }
 
-    private fun openVideoPlayer(url: String, title: String) {
-        startActivity(
-            Intent(requireContext(), VideoPlayerActivity::class.java).apply {
-                putExtra(VideoPlayerActivity.EXTRA_URL, url)
-                putExtra(VideoPlayerActivity.EXTRA_TITLE, title)
-            }
-        )
+    private fun openPlayer(url: String, title: String) {
+        startActivity(Intent(requireContext(), VideoPlayerActivity::class.java).apply {
+            putExtra(VideoPlayerActivity.EXTRA_URL, url)
+            putExtra(VideoPlayerActivity.EXTRA_TITLE, title)
+        })
     }
 
-    fun loadUrl(url: String) {
-        webView?.loadUrl(url)
-    }
+    fun loadUrl(url: String) = webView?.loadUrl(url)
 
     override fun onDestroyView() {
         webView?.destroy()
