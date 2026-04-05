@@ -28,6 +28,12 @@ else
 fi
 
 cd "$PROJECT_DIR"
+
+# Genera gradlew se mancante
+if [ ! -f "gradlew" ]; then
+    echo "gradlew non trovato, generazione tramite 'gradle wrapper'..."
+    gradle wrapper --gradle-version 8.2
+fi
 chmod +x gradlew
 
 # Ottimizzazione Gradle per dispositivi mobili
