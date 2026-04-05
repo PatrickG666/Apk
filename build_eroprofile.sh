@@ -9,8 +9,21 @@ BUILD_TYPE=${1:-debug}
 
 echo "=== Build EroProfile APK ($BUILD_TYPE) ==="
 
-# Variabili ambiente
-export JAVA_HOME="$PREFIX/opt/openjdk"
+# Rileva JAVA_HOME automaticamente
+if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    : # già impostato correttamente
+elif [ -x "$PREFIX/opt/openjdk/bin/java" ]; then
+    export JAVA_HOME="$PREFIX/opt/openjdk"
+elif [ -x "$PREFIX/lib/jvm/java-21-openjdk/bin/java" ]; then
+    export JAVA_HOME="$PREFIX/lib/jvm/java-21-openjdk"
+elif command -v java >/dev/null 2>&1; then
+    export JAVA_HOME="$(dirname $(dirname $(readlink -f $(command -v java))))"
+else
+    echo "ERRORE: Java non trovato. Esegui: pkg install openjdk-21"
+    exit 1
+fi
+echo "JAVA_HOME: $JAVA_HOME"
+
 export ANDROID_HOME="$HOME/android-sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
