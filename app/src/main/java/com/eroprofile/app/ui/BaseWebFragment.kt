@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ProgressBar
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -19,7 +20,7 @@ import com.eroprofile.app.ui.video.VideoPlayerActivity
 abstract class BaseWebFragment : Fragment() {
 
     protected var webView: WebView? = null
-    private var progressBar: View? = null
+    private var progressBar: ProgressBar? = null
 
     abstract val initialUrl: String
 
@@ -39,8 +40,8 @@ abstract class BaseWebFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         val root = inflater.inflate(R.layout.fragment_webview, container, false)
-        webView = root.findViewById(R.id.webView)
-        progressBar = root.findViewById(R.id.progressBar)
+        webView = root.findViewById<WebView>(R.id.webView)
+        progressBar = root.findViewById<ProgressBar>(R.id.progressBar)
 
         webView?.settings?.apply {
             javaScriptEnabled = true
@@ -85,6 +86,7 @@ abstract class BaseWebFragment : Fragment() {
 
         webView?.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
+                progressBar?.progress = newProgress
                 progressBar?.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
             }
         }

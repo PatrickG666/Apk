@@ -8,7 +8,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
-import androidx.constraintlayout.widget.ConstraintLayout
+import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import com.eroprofile.app.R
@@ -23,11 +23,11 @@ class SearchFragment : BaseWebFragment() {
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        // Get the WebView layout from parent
-        val root = super.onCreateView(inflater, container, savedInstanceState)
+        // WebView root from parent (fragment_webview.xml)
+        val webRoot = super.onCreateView(inflater, container, savedInstanceState)
 
-        // Inflate and prepend the search bar
-        val searchBar = inflater.inflate(R.layout.search_bar, container, false)
+        // Search bar
+        val searchBar = inflater.inflate(R.layout.search_bar, null, false)
         val searchInput = searchBar.findViewById<EditText>(R.id.searchInput)
         val clearBtn = searchBar.findViewById<ImageView>(R.id.btnClear)
 
@@ -48,21 +48,23 @@ class SearchFragment : BaseWebFragment() {
             loadUrl("${WebViewScraper.BASE_URL}/m/video/list?search=")
         }
 
-        // Wrap: searchBar on top, webview below
-        val wrapper = ConstraintLayout(requireContext())
-        wrapper.layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        // Return composite view
-        val linear = android.widget.LinearLayout(requireContext()).apply {
+        // Outer container: search bar fixed height on top, WebView fills rest
+        return LinearLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
-            orientation = android.widget.LinearLayout.VERTICAL
-            addView(searchBar)
-            addView(root)
+            orientation = LinearLayout.VERTICAL
+            addView(searchBar, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+            addView(webRoot, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f  // weight=1 so it fills remaining height
+            ))
         }
-        return linear
     }
 
     private fun performSearch(query: String) {
