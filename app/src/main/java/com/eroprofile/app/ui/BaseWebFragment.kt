@@ -2,12 +2,14 @@ package com.eroprofile.app.ui
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -20,6 +22,24 @@ abstract class BaseWebFragment : Fragment() {
     var webView: WebView? = null
     abstract val initialUrl: String
 
+    // Injected before page JS runs to hide WebView fingerprint from Cloudflare
+    private val antiDetectionJs = """
+        (function() {
+            // Hide webdriver flag (main Cloudflare trigger)
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            // Fake plugins list
+            Object.defineProperty(navigator, 'plugins', { get: () => [
+                { name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' }
+            ]});
+            // Fake languages
+            Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en-US', 'en'] });
+            // Remove automation-related properties
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        })();
+    """.trimIndent()
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -29,7 +49,8 @@ abstract class BaseWebFragment : Fragment() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        wv.setBackgroundColor(Color.BLACK)
+        wv.setBackgroundColor(Color.parseColor("#1A1A1A"))
+
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -37,9 +58,20 @@ abstract class BaseWebFragment : Fragment() {
             loadWithOverviewMode = true
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+            databaseEnabled = true
+            cacheMode = WebSettings.LOAD_DEFAULT
+            // User agent that matches a real Chrome on Android
+            userAgentString = "Mozilla/5.0 (Linux; Android 13; SM-S918B) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/120.0.6099.144 Mobile Safari/537.36"
         }
+
         wv.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                // Inject anti-detection JS as early as possible
+                view.evaluateJavascript(antiDetectionJs, null)
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
                 val url = req.url.toString()
                 return when {
@@ -52,10 +84,33 @@ abstract class BaseWebFragment : Fragment() {
                         true
                     }
                     url.contains("eroprofile.com") -> false
-                    else -> { runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }; true }
+                    else -> {
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        true
+                    }
                 }
             }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                // Re-inject after load + apply dark theme
+                view.evaluateJavascript(antiDetectionJs, null)
+                view.evaluateJavascript("""
+                    (function(){
+                        if(document.getElementById('_ep'))return;
+                        var s=document.createElement('style');
+                        s.id='_ep';
+                        s.innerHTML='body,html{background:#1A1A1A!important;color:#E0E0E0!important}' +
+                            'header,.ad,.ads,.cookie-notice,.popup,.install-app-banner,.download-app{display:none!important}' +
+                            'a{color:#FF6600!important}';
+                        document.head&&document.head.appendChild(s);
+                    })();
+                """.trimIndent(), null)
+            }
         }
+
+        // Required for JS alerts/confirms used by Cloudflare challenge
+        wv.webChromeClient = WebChromeClient()
+
         webView = wv
         wv.loadUrl(initialUrl)
         return wv
