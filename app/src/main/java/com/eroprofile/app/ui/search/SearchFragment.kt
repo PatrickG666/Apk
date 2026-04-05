@@ -1,116 +1,78 @@
 package com.eroprofile.app.ui.search
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.ImageView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.eroprofile.app.adapters.VideoAdapter
-import com.eroprofile.app.databinding.FragmentSearchBinding
-import com.eroprofile.app.ui.video.VideoPlayerActivity
+import com.eroprofile.app.R
+import com.eroprofile.app.data.scraper.WebViewScraper
+import com.eroprofile.app.ui.BaseWebFragment
+import java.net.URLEncoder
 
-class SearchFragment : Fragment() {
+class SearchFragment : BaseWebFragment() {
 
-    private var _binding: FragmentSearchBinding? = null
-    private val binding get() = _binding!!
-
-    private val viewModel: SearchViewModel by viewModels()
-    private lateinit var videoAdapter: VideoAdapter
+    override val initialUrl = "${WebViewScraper.BASE_URL}/m/video/list?search="
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentSearchBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+        // Get the WebView layout from parent
+        val root = super.onCreateView(inflater, container, savedInstanceState)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        setupSearchInput()
-        setupRecyclerView()
-        observeViewModel()
-    }
+        // Inflate and prepend the search bar
+        val searchBar = inflater.inflate(R.layout.search_bar, container, false)
+        val searchInput = searchBar.findViewById<EditText>(R.id.searchInput)
+        val clearBtn = searchBar.findViewById<ImageView>(R.id.btnClear)
 
-    private fun setupSearchInput() {
-        binding.searchInput.doAfterTextChanged { text ->
-            val query = text?.toString() ?: ""
-            if (query.length >= 2) {
-                viewModel.search(query)
-            } else if (query.isEmpty()) {
-                viewModel.search("")
-            }
+        searchInput.doAfterTextChanged { text ->
+            clearBtn.visibility = if (text.isNullOrEmpty()) View.GONE else View.VISIBLE
         }
 
-        binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
+        searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                val query = binding.searchInput.text?.toString() ?: ""
-                viewModel.search(query)
-                hideKeyboard()
+                performSearch(searchInput.text.toString())
+                hideKeyboard(searchInput)
                 true
             } else false
         }
+
+        clearBtn.setOnClickListener {
+            searchInput.text.clear()
+            loadUrl("${WebViewScraper.BASE_URL}/m/video/list?search=")
+        }
+
+        // Wrap: searchBar on top, webview below
+        val wrapper = ConstraintLayout(requireContext())
+        wrapper.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        // Return composite view
+        val linear = android.widget.LinearLayout(requireContext()).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(searchBar)
+            addView(root)
+        }
+        return linear
     }
 
-    private fun setupRecyclerView() {
-        videoAdapter = VideoAdapter { video ->
-            val intent = Intent(requireContext(), VideoPlayerActivity::class.java).apply {
-                putExtra(VideoPlayerActivity.EXTRA_URL, video.url)
-                putExtra(VideoPlayerActivity.EXTRA_TITLE, video.title)
-            }
-            startActivity(intent)
-        }
-
-        binding.recyclerSearchResults.apply {
-            layoutManager = GridLayoutManager(requireContext(), 2)
-            adapter = videoAdapter
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                    val lm = rv.layoutManager as GridLayoutManager
-                    if (lm.itemCount <= lm.findLastVisibleItemPosition() + 4) {
-                        viewModel.loadNextPage()
-                    }
-                }
-            })
-        }
+    private fun performSearch(query: String) {
+        if (query.trim().isEmpty()) return
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        loadUrl("${WebViewScraper.BASE_URL}/m/video/list?search=$encoded")
     }
 
-    private fun observeViewModel() {
-        viewModel.results.observe(viewLifecycleOwner) { results ->
-            videoAdapter.submitList(results)
-            binding.recyclerSearchResults.visibility = if (results.isEmpty()) View.GONE else View.VISIBLE
-            if (results.isEmpty() && binding.searchInput.text?.toString()?.isNotEmpty() == true) {
-                binding.emptyText.text = getString(com.eroprofile.app.R.string.no_results)
-                binding.emptyView.visibility = View.VISIBLE
-            } else if (results.isEmpty()) {
-                binding.emptyText.text = getString(com.eroprofile.app.R.string.search_hint)
-                binding.emptyView.visibility = View.VISIBLE
-            } else {
-                binding.emptyView.visibility = View.GONE
-            }
-        }
-
-        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
-            binding.progressBar.visibility = if (isLoading && videoAdapter.itemCount == 0) View.VISIBLE else View.GONE
-        }
-    }
-
-    private fun hideKeyboard() {
+    private fun hideKeyboard(view: View) {
         val imm = ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
-        imm?.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
+        imm?.hideSoftInputFromWindow(view.windowToken, 0)
     }
 }
