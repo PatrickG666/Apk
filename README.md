@@ -1,44 +1,55 @@
-# Compilare APK su Galaxy S26 Ultra (Termux)
+# Compilare EroProfile APK su Galaxy S26 Ultra (Termux)
+
+**Progetto:** `com.eroprofile.app`
+**Branch:** `claude/android-eroprofile-app-oG2AH`
 
 ## Prerequisiti
 
-1. Installa **Termux** da [F-Droid](https://f-droid.org/packages/com.termux/) (NON dal Play Store, versione obsoleta)
+1. Installa **Termux** da [F-Droid](https://f-droid.org/packages/com.termux/) (NON dal Play Store)
 2. Almeno **5GB di spazio libero**
 
-## Setup iniziale (una volta sola)
+## Step 1 — Setup iniziale (una volta sola)
 
 ```bash
 bash termux_build_setup.sh
 ```
 
-Questo script installa:
-- OpenJDK 21
-- Gradle
-- Android SDK (platform-tools, build-tools 35, android-35)
+Installa: OpenJDK 21, Gradle, Android SDK 35, build-tools.
 
-## Compilare un progetto
+## Step 2 — Compila EroProfile
 
 ```bash
-# Debug (per test)
-bash build_apk.sh debug /percorso/progetto
+# Debug (per installazione diretta)
+bash build_eroprofile.sh debug
 
 # Release (per distribuzione)
-bash build_apk.sh release /percorso/progetto
+bash build_eroprofile.sh release
 ```
 
-## Installare l'APK direttamente
+Lo script:
+- Clona automaticamente il progetto da GitHub
+- Ottimizza Gradle per Termux
+- Genera l'APK in `~/EroProfile/app/build/outputs/apk/`
+
+## Installare l'APK
 
 ```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install ~/EroProfile/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Oppure copia il file APK con un file manager e installalo manualmente.
+Oppure usa un file manager per copiare e installare manualmente.
+
+## Dettagli progetto
+
+| Parametro | Valore |
+|-----------|--------|
+| applicationId | com.eroprofile.app |
+| minSdk | 24 (Android 7.0+) |
+| targetSdk | 34 |
+| compileSdk | 34 |
 
 ## Note Galaxy S26 Ultra
 
-- Architettura: ARM64 (aarch64) — compatibile con tutti gli strumenti
-- RAM: 12-16GB — sufficiente per build Gradle anche grandi
-- Per progetti grandi aggiungi in `gradle.properties`:
-  ```
-  org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError
-  ```
+- ARM64 — compatibile con tutti gli strumenti
+- RAM 12-16GB — sufficiente per build Gradle
+- Gradle configurato con `-Xmx3g` per lasciare RAM al sistema

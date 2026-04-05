@@ -1,0 +1,69 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Script completo per compilare EroProfile APK su Galaxy S26 Ultra (Termux)
+# Progetto: com.eroprofile.app
+# Uso: bash build_eroprofile.sh [debug|release]
+
+set -e
+
+BUILD_TYPE=${1:-debug}
+
+echo "=== Build EroProfile APK ($BUILD_TYPE) ==="
+
+# Variabili ambiente
+export JAVA_HOME="$PREFIX/opt/openjdk"
+export ANDROID_HOME="$HOME/android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+# Directory progetto (clona se non esiste)
+PROJECT_DIR="$HOME/EroProfile"
+
+if [ ! -d "$PROJECT_DIR" ]; then
+    echo "Clonazione progetto..."
+    git clone --branch claude/android-eroprofile-app-oG2AH \
+        https://github.com/PatrickG666/Apk.git "$PROJECT_DIR"
+else
+    echo "Aggiornamento progetto..."
+    git -C "$PROJECT_DIR" pull origin claude/android-eroprofile-app-oG2AH
+fi
+
+cd "$PROJECT_DIR"
+chmod +x gradlew
+
+# Ottimizzazione Gradle per dispositivi mobili
+cat > gradle.properties << 'EOF'
+# Ottimizzazioni per Termux / Galaxy S26 Ultra
+org.gradle.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+org.gradle.daemon=false
+android.useAndroidX=true
+kotlin.incremental=true
+EOF
+
+# Compilazione
+echo ""
+echo "Avvio compilazione..."
+if [ "$BUILD_TYPE" = "release" ]; then
+    ./gradlew assembleRelease --no-daemon
+    APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
+else
+    ./gradlew assembleDebug --no-daemon
+    APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+fi
+
+echo ""
+if [ -f "$APK_PATH" ]; then
+    SIZE=$(du -sh "$APK_PATH" | cut -f1)
+    echo "=== BUILD COMPLETATA! ==="
+    echo "APK: $PROJECT_DIR/$APK_PATH"
+    echo "Dimensione: $SIZE"
+    echo ""
+    echo "Per installare sul dispositivo:"
+    echo "  adb install $PROJECT_DIR/$APK_PATH"
+    echo ""
+    echo "Oppure copia il file con un file manager e installalo manualmente."
+else
+    echo "ERRORE: APK non trovato. Controlla i log sopra."
+    exit 1
+fi
