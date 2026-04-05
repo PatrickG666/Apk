@@ -1,5 +1,6 @@
 package com.eroprofile.app.ui.search
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -7,7 +8,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
@@ -21,10 +21,12 @@ class SearchFragment : BaseWebFragment() {
 
     override val initialUrl = "${WebViewScraper.BASE_URL}/m/video/list?search="
 
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        val ctx = requireContext()
+        // Build the WebView via parent (returns the WebView itself)
+        val webView = super.onCreateView(inflater, container, savedInstanceState)
 
         // Search bar
         val searchBar = inflater.inflate(R.layout.search_bar, null, false)
@@ -46,21 +48,17 @@ class SearchFragment : BaseWebFragment() {
             loadUrl("${WebViewScraper.BASE_URL}/m/video/list?search=")
         }
 
-        // WebView built by parent
-        val webContainer: FrameLayout = buildWebView()
-
-        return LinearLayout(ctx).apply {
+        return LinearLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF1A1A1A.toInt())
             addView(searchBar, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ))
-            addView(webContainer, LinearLayout.LayoutParams(
+            addView(webView, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             ))
         }
