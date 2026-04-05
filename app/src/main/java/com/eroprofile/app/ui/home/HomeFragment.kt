@@ -133,6 +133,7 @@ class HomeFragment : Fragment() {
             binding.swipeRefresh.isRefreshing = false
             if (error != null && videoAdapter.itemCount == 0) {
                 binding.errorView.visibility = View.VISIBLE
+                binding.errorMessage.text = error
                 binding.progressBar.visibility = View.GONE
             } else {
                 binding.errorView.visibility = View.GONE

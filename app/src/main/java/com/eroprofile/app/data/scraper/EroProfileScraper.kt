@@ -102,13 +102,29 @@ class EroProfileScraper {
     private fun parseVideoList(doc: Document): List<Video> {
         val videos = mutableListOf<Video>()
 
-        // eroprofile video list items — selectors based on the site's HTML structure
-        val items = doc.select("div.videoListWrapper, ul.list-videos li, div.thumb-item, .videoListItem, li.video-item, .video-box")
+        // eroprofile video list items — try multiple selector patterns
+        val items = doc.select(
+            "div.videoListWrapper, ul.list-videos li, div.thumb-item, " +
+            ".videoListItem, li.video-item, .video-box, div.thumbBlock, " +
+            "div.videoBlock, li.videoItem, div.video-item, div.thumb, " +
+            "ul.videoList li, div.item[class*=video], li[class*=video], " +
+            "div[class*=thumb], div[class*=video]"
+        ).filter { el ->
+            // Keep only elements that contain a link to a video
+            el.selectFirst("a[href*=video]") != null && el.selectFirst("img") != null
+        }
 
-        for (item in items) {
+        // Fallback: find any anchor that links to a video view page
+        val effectiveItems = if (items.isEmpty()) {
+            doc.select("a[href*=/m/video/view], a[href*=/video/view]")
+                .map { it.parent() ?: it }
+                .distinctBy { it.attr("href").ifEmpty { it.html() } }
+        } else items
+
+        for (item in effectiveItems) {
             try {
                 // Try multiple selector patterns to handle site changes
-                val linkEl = item.selectFirst("a[href*=/m/video/view], a[href*=/video/]") ?: continue
+                val linkEl = item.selectFirst("a[href*=/m/video/view], a[href*=/video/view], a[href*=/video/]") ?: continue
                 val href = linkEl.attr("abs:href").ifEmpty { linkEl.attr("href") }
                 if (href.isEmpty()) continue
 

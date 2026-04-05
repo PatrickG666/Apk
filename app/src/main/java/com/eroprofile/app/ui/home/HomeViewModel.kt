@@ -80,7 +80,11 @@ class HomeViewModel : ViewModel() {
             result.onSuccess { newVideos ->
                 if (newVideos.isEmpty()) {
                     isLastPage = true
+                    if (currentPage == 1) {
+                        _error.value = "Nessun video trovato. Il sito potrebbe aver cambiato struttura."
+                    }
                 } else {
+                    _error.value = null
                     if (currentPage == 1) allVideos.clear()
                     allVideos.addAll(newVideos)
                     _videos.value = allVideos.toList()
