@@ -1,17 +1,18 @@
 package com.eroprofile.app.ui.home
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.eroprofile.app.data.models.Video
 import com.eroprofile.app.data.repository.VideoRepository
-import com.eroprofile.app.data.scraper.EroProfileScraper
+import com.eroprofile.app.data.scraper.WebViewScraper
 import kotlinx.coroutines.launch
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repository = VideoRepository()
+    private val repository = VideoRepository(app)
 
     private val _videos = MutableLiveData<List<Video>>()
     val videos: LiveData<List<Video>> = _videos
@@ -22,7 +23,7 @@ class HomeViewModel : ViewModel() {
     private val _error = MutableLiveData<String?>(null)
     val error: LiveData<String?> = _error
 
-    private var currentSort = EroProfileScraper.SORT_RECENT
+    private var currentSort = WebViewScraper.SORT_RECENT
     private var currentPage = 1
     private var isLastPage = false
     private val allVideos = mutableListOf<Video>()
@@ -81,7 +82,7 @@ class HomeViewModel : ViewModel() {
                 if (newVideos.isEmpty()) {
                     isLastPage = true
                     if (currentPage == 1) {
-                        _error.value = "Nessun video trovato. Il sito potrebbe aver cambiato struttura."
+                        _error.value = "Nessun video trovato"
                     }
                 } else {
                     _error.value = null

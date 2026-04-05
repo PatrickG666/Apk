@@ -1,8 +1,9 @@
 package com.eroprofile.app.ui.search
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.eroprofile.app.data.models.Video
 import com.eroprofile.app.data.repository.VideoRepository
@@ -10,9 +11,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class SearchViewModel : ViewModel() {
+class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repository = VideoRepository()
+    private val repository = VideoRepository(app)
 
     private val _results = MutableLiveData<List<Video>>()
     val results: LiveData<List<Video>> = _results
@@ -41,7 +42,7 @@ class SearchViewModel : ViewModel() {
         allResults.clear()
 
         searchJob = viewModelScope.launch {
-            delay(400) // Debounce
+            delay(400)
             fetchResults()
         }
     }

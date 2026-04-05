@@ -1,14 +1,15 @@
 package com.eroprofile.app.data.repository
 
+import android.content.Context
 import com.eroprofile.app.data.models.Category
 import com.eroprofile.app.data.models.Video
-import com.eroprofile.app.data.scraper.EroProfileScraper
+import com.eroprofile.app.data.scraper.WebViewScraper
 
-class VideoRepository {
+class VideoRepository(context: Context) {
 
-    private val scraper = EroProfileScraper()
+    private val scraper = WebViewScraper(context)
 
-    suspend fun getVideos(sort: String = EroProfileScraper.SORT_RECENT, page: Int = 1): Result<List<Video>> =
+    suspend fun getVideos(sort: String = WebViewScraper.SORT_RECENT, page: Int = 1): Result<List<Video>> =
         scraper.fetchVideos(sort, page)
 
     suspend fun searchVideos(query: String, page: Int = 1): Result<List<Video>> =
