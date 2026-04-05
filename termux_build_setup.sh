@@ -33,10 +33,12 @@ SDK_DIR="$HOME/android-sdk"
 mkdir -p "$SDK_DIR/cmdline-tools"
 
 CMDLINE_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-wget -q --show-progress -O /tmp/cmdline-tools.zip "$CMDLINE_URL"
-unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-tmp
-mv /tmp/cmdline-tools-tmp/cmdline-tools "$SDK_DIR/cmdline-tools/latest"
-rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools-tmp
+TMPDIR="${TMPDIR:-$HOME/tmp}"
+mkdir -p "$TMPDIR"
+wget -q --show-progress -O "$TMPDIR/cmdline-tools.zip" "$CMDLINE_URL"
+unzip -q "$TMPDIR/cmdline-tools.zip" -d "$TMPDIR/cmdline-tools-tmp"
+mv "$TMPDIR/cmdline-tools-tmp/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+rm -rf "$TMPDIR/cmdline-tools.zip" "$TMPDIR/cmdline-tools-tmp"
 
 # Configura SDK environment
 cat >> ~/.bashrc << 'EOF'
