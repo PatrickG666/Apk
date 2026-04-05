@@ -2,7 +2,8 @@ package com.eroprofile.app.data.scraper
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.webkit.JavascriptInterface
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -22,7 +23,9 @@ class WebViewScraper(private val context: Context) {
         const val SORT_RECENT = "date"
         const val SORT_POPULAR = "views"
         const val SORT_TOP_RATED = "rated"
-        private const val TIMEOUT_MS = 20_000L
+        private const val TIMEOUT_MS = 60_000L   // 60s total
+        private const val POLL_INTERVAL_MS = 2_000L  // check every 2s
+        private const val POLL_START_MS = 4_000L     // first check after 4s
     }
 
     // JS injected after page load to extract video data as JSON
@@ -113,7 +116,7 @@ class WebViewScraper(private val context: Context) {
     private suspend fun <T> fetchAndParse(url: String, parser: (String) -> List<T>): Result<List<T>> {
         return try {
             val json = loadPageAndEval(url, extractVideosJS)
-                ?: return Result.failure(Exception("Timeout: il sito non risponde entro ${TIMEOUT_MS/1000}s"))
+                ?: return Result.failure(Exception("Timeout dopo ${TIMEOUT_MS/1000}s: sito lento o contenuto protetto da Cloudflare"))
             val items = parser(json)
             if (items.isEmpty()) {
                 Result.failure(Exception("Nessun video trovato nella pagina"))
@@ -148,6 +151,7 @@ class WebViewScraper(private val context: Context) {
         withTimeoutOrNull(TIMEOUT_MS) {
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { cont ->
+                    val handler = Handler(Looper.getMainLooper())
                     val webView = WebView(context)
                     webView.settings.apply {
                         javaScriptEnabled = true
@@ -157,35 +161,60 @@ class WebViewScraper(private val context: Context) {
 
                     var resolved = false
 
-                    webView.webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String) {
-                            // Wait a bit for JS to render content, then evaluate
-                            view.postDelayed({
-                                view.evaluateJavascript(js) { result ->
-                                    if (!resolved) {
-                                        resolved = true
-                                        webView.destroy()
-                                        val clean = result?.trim()?.removeSurrounding("\"")
-                                            ?.replace("\\\"", "\"")
-                                        // evaluateJavascript wraps strings in quotes; unwrap if needed
-                                        val jsonStr = if (result != null && result.startsWith("\"")) {
-                                            // it's a JSON string escaped inside a JS string
-                                            clean?.replace("\\n", "")
-                                        } else result
-                                        cont.resume(jsonStr)
-                                    }
-                                }
-                            }, 3000) // 3s delay for JS rendering
+                    fun resolve(result: String?) {
+                        if (!resolved) {
+                            resolved = true
+                            handler.removeCallbacksAndMessages(null)
+                            webView.stopLoading()
+                            webView.destroy()
+                            cont.resume(result)
                         }
+                    }
 
+                    // JS that returns results OR null/"[]" if not ready yet
+                    val wrappedJs = """
+                        (function() {
+                            try { return ($js); } catch(e) { return '[]'; }
+                        })();
+                    """.trimIndent()
+
+                    // Polling function: run JS every POLL_INTERVAL_MS until results found
+                    fun scheduleEval(delayMs: Long) {
+                        handler.postDelayed({
+                            if (resolved) return@postDelayed
+                            webView.evaluateJavascript(wrappedJs) { raw ->
+                                if (resolved) return@evaluateJavascript
+                                // Unescape the JS string result
+                                val json = if (raw != null && raw.startsWith("\"")) {
+                                    raw.removeSurrounding("\"")
+                                        .replace("\\\"", "\"")
+                                        .replace("\\'", "'")
+                                        .replace("\\n", "")
+                                } else raw ?: "[]"
+
+                                val hasItems = try {
+                                    JSONArray(json).length() > 0
+                                } catch (_: Exception) { false }
+
+                                if (hasItems) {
+                                    resolve(json)
+                                } else {
+                                    // Not ready yet, poll again
+                                    scheduleEval(POLL_INTERVAL_MS)
+                                }
+                            }
+                        }, delayMs)
+                    }
+
+                    webView.webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
                     }
 
-                    cont.invokeOnCancellation {
-                        if (!resolved) { resolved = true; webView.destroy() }
-                    }
+                    cont.invokeOnCancellation { resolve(null) }
 
                     webView.loadUrl(url)
+                    // Start polling after POLL_START_MS regardless of page load events
+                    scheduleEval(POLL_START_MS)
                 }
             }
         }
