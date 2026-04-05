@@ -51,15 +51,24 @@ echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" > "$ANDROID_HOME/licenses/a
 yes | sdkmanager --licenses > /dev/null 2>&1 || true
 sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
 
+# Installa aapt2 ARM64 da Termux (il binario Maven è x86_64 e non gira su ARM)
+if ! command -v aapt2 >/dev/null 2>&1; then
+    echo "Installazione aapt2 ARM64..."
+    pkg install -y aapt2
+fi
+AAPT2_PATH="$(command -v aapt2)"
+echo "aapt2: $AAPT2_PATH"
+
 # Genera gradlew se mancante
 if [ ! -f "gradlew" ]; then
     echo "gradlew non trovato, generazione tramite 'gradle wrapper'..."
-    gradle wrapper --gradle-version 8.2
+    gradle wrapper --gradle-version 8.4
 fi
 chmod +x gradlew
 
 # Ottimizzazione Gradle per dispositivi mobili
-cat > gradle.properties << 'EOF'
+# android.aapt2FromMavenOverride forza l'uso dell'aapt2 ARM64 di Termux
+cat > gradle.properties << EOF
 # Ottimizzazioni per Termux / Galaxy S26 Ultra
 org.gradle.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
 org.gradle.parallel=true
@@ -67,6 +76,7 @@ org.gradle.caching=true
 org.gradle.daemon=false
 android.useAndroidX=true
 kotlin.incremental=true
+android.aapt2FromMavenOverride=$AAPT2_PATH
 EOF
 
 # Compilazione
