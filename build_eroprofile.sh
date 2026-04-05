@@ -42,6 +42,15 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Accetta licenze SDK
+echo "Accettazione licenze Android SDK..."
+mkdir -p "$ANDROID_HOME/licenses"
+echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
+echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" >> "$ANDROID_HOME/licenses/android-sdk-license"
+echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+yes | sdkmanager --licenses > /dev/null 2>&1 || true
+sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+
 # Genera gradlew se mancante
 if [ ! -f "gradlew" ]; then
     echo "gradlew non trovato, generazione tramite 'gradle wrapper'..."
