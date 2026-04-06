@@ -7,11 +7,14 @@ import android.os.Bundle
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import com.eroprofile.app.databinding.ActivityVideoPlayerBinding
+import java.io.ByteArrayInputStream
 
 class VideoPlayerActivity : AppCompatActivity() {
 
@@ -21,111 +24,97 @@ class VideoPlayerActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityVideoPlayerBinding
+    private var player: ExoPlayer? = null
+    private var scraperWebView: WebView? = null
+    private var streamFound = false
+    private var pageUrl = ""
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityVideoPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-
-        binding.tvTitle.text = title
-
-        setupWebView(url)
+        pageUrl = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
+        binding.tvTitle.text = intent.getStringExtra(EXTRA_TITLE) ?: ""
 
         binding.btnBack.setOnClickListener { finish() }
-
         binding.btnOpenBrowser.setOnClickListener {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
         }
+
+        setupPlayer()
+        setupScraperWebView()
+    }
+
+    private fun setupPlayer() {
+        player = ExoPlayer.Builder(this).build()
+        binding.playerView.player = player
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebView(url: String) {
-        binding.webView.settings.apply {
+    private fun setupScraperWebView() {
+        val wv = WebView(this)
+        wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+            userAgentString = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36"
         }
+        wv.webChromeClient = WebChromeClient()
+        wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest) = false
 
-        binding.webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val reqUrl = request.url.toString()
-                // Keep navigation within eroprofile
-                return if (reqUrl.contains("eroprofile.com")) {
-                    false
-                } else {
-                    // Open external URLs in system browser
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(reqUrl)))
-                    true
+            override fun shouldInterceptRequest(
+                view: WebView, request: WebResourceRequest
+            ): WebResourceResponse? {
+                val url = request.url.toString()
+                if (!streamFound && isVideoStream(url)) {
+                    streamFound = true
+                    runOnUiThread { playStream(url) }
+                    // Block WebView from downloading the video (save bandwidth)
+                    return WebResourceResponse("text/plain", "UTF-8",
+                        ByteArrayInputStream(ByteArray(0)))
                 }
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                binding.progressBar.visibility = View.GONE
-                // Inject CSS to hide ads/headers and match dark theme
-                injectDarkThemeCss()
+                return null
             }
         }
-
-        binding.webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                binding.progressBar.progress = newProgress
-                binding.progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
-            }
-        }
-
-        binding.webView.loadUrl(url)
+        // Attach to window (1×1px) so it can make network requests
+        binding.root.addView(wv, android.view.ViewGroup.LayoutParams(1, 1))
+        scraperWebView = wv
+        wv.loadUrl(pageUrl)
     }
 
-    private fun injectDarkThemeCss() {
-        val css = """
-            /* Hide navigation bars, ads, banners */
-            header, .site-header, nav.main-nav, .ad, .ads, .advertisement,
-            .banner, .sidebar, footer, .footer, .cookie-notice,
-            .popup, .modal-overlay, .top-bar { display: none !important; }
-
-            /* Dark background */
-            body { background-color: #1A1A1A !important; color: #FFFFFF !important; }
-
-            /* Video container full width */
-            .video-player, #player, .video-wrap, .video-container {
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-        """.trimIndent().replace("\n", " ")
-
-        val js = """
-            (function() {
-                var style = document.createElement('style');
-                style.type = 'text/css';
-                style.innerHTML = '$css';
-                document.head.appendChild(style);
-            })();
-        """.trimIndent()
-
-        binding.webView.evaluateJavascript(js, null)
+    private fun isVideoStream(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains(".mp4") || lower.contains(".m4v") ||
+               lower.contains(".m3u8") || lower.contains(".webm") ||
+               lower.contains(".flv")
     }
 
-    override fun onBackPressed() {
-        if (binding.webView.canGoBack()) {
-            binding.webView.goBack()
-        } else {
-            super.onBackPressed()
+    private fun playStream(streamUrl: String) {
+        binding.loadingView.visibility = View.GONE
+        player?.apply {
+            setMediaItem(MediaItem.fromUri(streamUrl))
+            prepare()
+            playWhenReady = true
         }
+    }
+
+    private fun showError() {
+        binding.loadingView.visibility = View.GONE
+        binding.errorView.visibility = View.VISIBLE
+    }
+
+    override fun onPause() {
+        super.onPause()
+        player?.pause()
     }
 
     override fun onDestroy() {
-        binding.webView.destroy()
+        player?.release()
+        player = null
+        scraperWebView?.destroy()
+        scraperWebView = null
         super.onDestroy()
     }
 }

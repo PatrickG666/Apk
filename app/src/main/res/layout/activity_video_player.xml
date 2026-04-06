@@ -6,6 +6,19 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
+    <!-- ExoPlayer view (full screen below topBar) -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/black"
+        app:resize_mode="fit"
+        app:show_timeout="4000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Top bar overlay -->
     <LinearLayout
         android:id="@+id/topBar"
@@ -42,37 +55,66 @@
             android:fontFamily="sans-serif-medium"
             android:paddingStart="4dp" />
 
-        <ImageButton
-            android:id="@+id/btnOpenBrowser"
+    </LinearLayout>
+
+    <!-- Loading state (centered) -->
+    <LinearLayout
+        android:id="@+id/loadingView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ProgressBar
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_open_browser"
-            android:tint="@color/ep_text_secondary"
-            android:contentDescription="@string/open_browser" />
+            android:indeterminateTint="@color/ep_orange" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Caricamento video..."
+            android:textColor="@color/ep_text_secondary"
+            android:textSize="14sp" />
 
     </LinearLayout>
 
-    <!-- WebView for video player page -->
-    <WebView
-        android:id="@+id/webView"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+    <!-- Error state (centered) -->
+    <LinearLayout
+        android:id="@+id/errorView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <!-- Loading indicator -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="0dp"
-        android:layout_height="3dp"
-        android:indeterminateTint="@color/ep_orange"
-        android:max="100"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar" />
+        <TextView
+            android:id="@+id/tvError"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Stream video non trovato"
+            android:textColor="@color/ep_text_secondary"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:padding="16dp" />
+
+        <Button
+            android:id="@+id/btnOpenBrowser"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="@color/ep_orange"
+            android:text="Apri nel browser"
+            android:textColor="@color/ep_text_primary" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
