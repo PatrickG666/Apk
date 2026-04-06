@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -17,6 +18,19 @@ import org.json.JSONArray
 import kotlin.coroutines.resume
 
 class WebViewScraper(private val context: Context) {
+
+    private val antiDetectionJs = """
+        (function() {
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [
+                { name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' }
+            ]});
+            Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en-US', 'en'] });
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        })();
+    """.trimIndent()
 
     companion object {
         const val BASE_URL = "https://www.eroprofile.com"
@@ -206,8 +220,12 @@ class WebViewScraper(private val context: Context) {
                         }, delayMs)
                     }
 
+                    webView.webChromeClient = WebChromeClient()
                     webView.webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
+                        override fun onPageFinished(view: WebView, url: String) {
+                            view.evaluateJavascript(antiDetectionJs, null)
+                        }
                     }
 
                     cont.invokeOnCancellation { resolve(null) }
