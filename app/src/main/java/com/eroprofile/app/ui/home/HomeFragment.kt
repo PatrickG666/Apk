@@ -3,6 +3,7 @@ package com.eroprofile.app.ui.home
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -20,6 +21,10 @@ import com.eroprofile.app.data.models.Video
 import com.eroprofile.app.databinding.FragmentHomeBinding
 import com.eroprofile.app.ui.video.VideoPlayerActivity
 import org.json.JSONArray
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class HomeFragment : Fragment() {
 
@@ -30,6 +35,16 @@ class HomeFragment : Fragment() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var videoAdapter: VideoAdapter
+
+    private val logFile = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        "ep_debug.txt"
+    )
+
+    private fun log(msg: String) {
+        val ts = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        runCatching { logFile.appendText("[$ts][Home] $msg\n") }
+    }
 
     private var currentSort = "date"
     private var pollAttempts = 0
@@ -114,6 +129,10 @@ class HomeFragment : Fragment() {
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
+                log("onPageFinished: $url")
+                view.evaluateJavascript(
+                    "document.title + ' | links:' + document.querySelectorAll('a').length + ' | imgs:' + document.querySelectorAll('img').length"
+                ) { info -> log("pageInfo: $info") }
                 pollAttempts = 0
                 handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
             }
@@ -138,8 +157,9 @@ class HomeFragment : Fragment() {
         pollAttempts++
         webView?.evaluateJavascript(extractVideosJs) { raw ->
             val json = unescapeJs(raw)
-            val hasItems = try { JSONArray(json).length() > 0 } catch (_: Exception) { false }
-            if (hasItems) {
+            val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
+            log("poll #$pollAttempts: count=$count raw=${raw?.take(200)}")
+            if (count > 0) {
                 requireActivity().runOnUiThread { handleVideos(json) }
             } else {
                 handler.postDelayed({ schedulePoll() }, pollIntervalMs)
@@ -182,6 +202,7 @@ class HomeFragment : Fragment() {
                     )
                 )
             }
+            log("handleVideos: parsed=${videos.size}, first thumb=${videos.firstOrNull()?.thumbnailUrl?.take(80)}")
             if (videos.isNotEmpty()) {
                 binding.progressBar.visibility = View.GONE
                 binding.errorView.visibility = View.GONE
