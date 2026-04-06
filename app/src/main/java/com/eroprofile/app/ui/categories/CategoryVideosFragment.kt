@@ -40,7 +40,8 @@ class CategoryVideosFragment : Fragment() {
 
     private var currentPage = 1
     private var pollAttempts = 0
-    private val maxPollAttempts = 15
+    private val maxPollAttempts = 20
+    private val pollIntervalMs = 800L
 
     private val extractVideosJs = """
         (function() {
@@ -126,16 +127,38 @@ class CategoryVideosFragment : Fragment() {
             javaScriptEnabled = true
             domStorageEnabled = true
             userAgentString = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36"
+            cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
+            loadsImagesAutomatically = false
+            blockNetworkImage = true
         }
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 pollAttempts = 0
                 if (isLoadingMore) {
-                    handler.postDelayed({ pollForNewVideos(0) }, 3000)
+                    handler.postDelayed({ pollForNewVideos(0) }, 0)
                 } else {
-                    handler.postDelayed({ schedulePoll() }, 3000)
+                    handler.postDelayed({ schedulePoll() }, 0)
                 }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: android.webkit.WebResourceRequest
+            ): android.webkit.WebResourceResponse? {
+                val url = request.url.toString()
+                if (url.contains("google-analytics") ||
+                    url.contains("googletagmanager") ||
+                    url.contains("doubleclick") ||
+                    url.contains("facebook.net") ||
+                    url.contains("/ads/") ||
+                    url.endsWith(".woff") || url.endsWith(".woff2") ||
+                    url.endsWith(".ttf") || url.endsWith(".otf")
+                ) {
+                    return android.webkit.WebResourceResponse("text/plain", "utf-8",
+                        java.io.ByteArrayInputStream(ByteArray(0)))
+                }
+                return super.shouldInterceptRequest(view, request)
             }
         }
         binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
@@ -152,7 +175,7 @@ class CategoryVideosFragment : Fragment() {
             val json = unescapeJs(raw)
             val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
             if (count > 0) requireActivity().runOnUiThread { handleInitialVideos(json) }
-            else handler.postDelayed({ schedulePoll() }, 2000)
+            else handler.postDelayed({ schedulePoll() }, pollIntervalMs)
         }
     }
 
@@ -194,7 +217,7 @@ class CategoryVideosFragment : Fragment() {
                     isLoadingMore = false
                 }
             } else {
-                handler.postDelayed({ pollForNewVideos(attempt + 1) }, 2000)
+                handler.postDelayed({ pollForNewVideos(attempt + 1) }, pollIntervalMs)
             }
         }
     }

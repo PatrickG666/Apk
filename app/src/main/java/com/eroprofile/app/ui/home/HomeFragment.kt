@@ -50,9 +50,9 @@ class HomeFragment : Fragment() {
 
     // Initial page load polling
     private var pollAttempts = 0
-    private val maxPollAttempts = 15
-    private val pollIntervalMs = 2000L
-    private val pollStartDelayMs = 3000L
+    private val maxPollAttempts = 20
+    private val pollIntervalMs = 800L
+    private val pollStartDelayMs = 0L
 
     private val logFile = File(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -153,6 +153,11 @@ class HomeFragment : Fragment() {
             javaScriptEnabled = true
             domStorageEnabled = true
             userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+            // Cache aggressivo: riusa risorse già scaricate
+            cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
+            // Non caricare immagini nel WebView scraper (le carica Glide)
+            loadsImagesAutomatically = false
+            blockNetworkImage = true
         }
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
@@ -164,6 +169,26 @@ class HomeFragment : Fragment() {
                 } else {
                     handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
                 }
+            }
+
+            // Blocca font, CSS, tracker — non servono per estrarre i link
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: android.webkit.WebResourceRequest
+            ): android.webkit.WebResourceResponse? {
+                val url = request.url.toString()
+                if (url.contains("google-analytics") ||
+                    url.contains("googletagmanager") ||
+                    url.contains("doubleclick") ||
+                    url.contains("facebook.net") ||
+                    url.contains("/ads/") ||
+                    url.endsWith(".woff") || url.endsWith(".woff2") ||
+                    url.endsWith(".ttf") || url.endsWith(".otf")
+                ) {
+                    return android.webkit.WebResourceResponse("text/plain", "utf-8",
+                        java.io.ByteArrayInputStream(ByteArray(0)))
+                }
+                return super.shouldInterceptRequest(view, request)
             }
         }
         binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
