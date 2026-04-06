@@ -149,8 +149,15 @@ class WebViewScraper(private val context: Context) {
                     .build()
 
                 val response = client.newCall(request).execute()
-                val html = response.body?.string() ?: ""
-                log("fetchCategories: status=${response.code} htmlLen=${html.length}")
+                val body = response.body
+                val contentType = body?.contentType()?.toString() ?: "null"
+                val contentLen = response.header("Content-Length") ?: "n/a"
+                val encoding = response.header("Content-Encoding") ?: "none"
+                val finalUrl = response.request.url.toString()
+                val html = body?.bytes()?.toString(Charsets.UTF_8) ?: ""
+                log("fetchCategories: status=${response.code} htmlLen=${html.length} " +
+                    "ct=$contentType cl=$contentLen enc=$encoding finalUrl=$finalUrl")
+                if (html.length < 500) log("fetchCategories: body='$html'")
 
                 if (html.isEmpty()) return@withContext Result.failure(Exception("Risposta vuota dal server"))
 
