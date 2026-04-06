@@ -9,7 +9,8 @@ data class Video(
     val views: String = "",
     val rating: String = "",
     val author: String = "",
-    val isHd: Boolean = false
+    val isHd: Boolean = false,
+    val category: String = ""
 )
 
 data class Category(

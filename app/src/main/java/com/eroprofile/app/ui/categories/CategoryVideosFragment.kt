@@ -66,7 +66,13 @@ class CategoryVideosFragment : Fragment() {
                     var d = a.querySelector('[class*=dur],[class*=time],[class*=len]');
                     if (!d && a.parentElement) d = a.parentElement.querySelector('[class*=dur],[class*=time],[class*=len]');
                     if (d) dur = d.textContent.trim();
-                    results.push({url:href, title:title, thumb:thumb, duration:dur});
+                    var cat = '';
+                    var container = a.closest('li,article,[class*=item],[class*=video],[class*=thumb]') || a.parentElement;
+                    if (container) {
+                        var cl = container.querySelector('a[href*="niche"],a[href*="/tag/"],a[href*="categor"],[class*=niche],[class*=categ],[class*=tag]');
+                        if (cl) cat = cl.textContent.trim();
+                    }
+                    results.push({url:href, title:title, thumb:thumb, duration:dur, category:cat});
                 });
                 return JSON.stringify(results);
             } catch(e) { return '[]'; }
@@ -243,7 +249,8 @@ class CategoryVideosFragment : Fragment() {
                     title = o.optString("title", "Video"),
                     url = url,
                     thumbnailUrl = o.optString("thumb"),
-                    duration = o.optString("duration")
+                    duration = o.optString("duration"),
+                    category = o.optString("category", "")
                 )
             }
         } catch (_: Exception) { emptyList() }

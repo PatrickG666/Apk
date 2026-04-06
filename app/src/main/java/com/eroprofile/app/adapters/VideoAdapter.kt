@@ -56,6 +56,7 @@ class VideoAdapter(
 
         private val imgThumbnail: ImageView = itemView.findViewById(R.id.imgThumbnail)
         private val tvTitle: TextView = itemView.findViewById(R.id.tvTitle)
+        private val tvCategory: TextView = itemView.findViewById(R.id.tvCategory)
         private val tvDuration: TextView = itemView.findViewById(R.id.tvDuration)
         private val tvViews: TextView = itemView.findViewById(R.id.tvViews)
         private val tvRating: TextView = itemView.findViewById(R.id.tvRating)
@@ -64,6 +65,8 @@ class VideoAdapter(
 
         fun bind(video: Video) {
             tvTitle.text = video.title
+            tvCategory.text = video.category
+            tvCategory.visibility = if (video.category.isNotEmpty()) View.VISIBLE else View.GONE
             tvDuration.text = video.duration
             tvDuration.visibility = if (video.duration.isNotEmpty()) View.VISIBLE else View.GONE
             tvViews.text = if (video.views.isNotEmpty()) "${video.views} views" else ""
