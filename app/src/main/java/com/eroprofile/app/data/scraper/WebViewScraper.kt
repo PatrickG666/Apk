@@ -2,6 +2,7 @@ package com.eroprofile.app.data.scraper
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -16,9 +17,25 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.coroutines.resume
 
 class WebViewScraper(private val context: Context) {
+
+    private val logFile = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        "ep_debug.txt"
+    )
+
+    private fun log(msg: String) {
+        val ts = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        val line = "[$ts][Scraper] $msg"
+        Log.d(TAG, msg)
+        runCatching { logFile.appendText("$line\n") }
+    }
 
     private val antiDetectionJs = """
         (function() {
@@ -111,13 +128,13 @@ class WebViewScraper(private val context: Context) {
 
     suspend fun fetchCategories(): Result<List<Category>> {
         val url = "$BASE_URL/m/video/categories"
-        Log.d(TAG, "fetchCategories: start → $url")
+        log("fetchCategories: START → $url")
         return try {
             val json = loadPageAndEval(url, extractCategoriesJS)
-            Log.d(TAG, "fetchCategories: json=${json?.take(200) ?: "NULL (timeout)"}")
+            log("fetchCategories: json=${json?.take(300) ?: "NULL (timeout)"}")
             if (json == null) return Result.failure(Exception("Timeout caricamento pagina"))
             val arr = JSONArray(json)
-            Log.d(TAG, "fetchCategories: arr.length=${arr.length()}")
+            log("fetchCategories: arr.length=${arr.length()}")
             val categories = (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 Category(
@@ -126,10 +143,10 @@ class WebViewScraper(private val context: Context) {
                     thumbnailUrl = o.optString("thumb", "")
                 )
             }.filter { it.name.isNotEmpty() && it.url.isNotEmpty() }
-            Log.d(TAG, "fetchCategories: filtered=${categories.size} categories")
+            log("fetchCategories: DONE filtered=${categories.size}")
             Result.success(categories)
         } catch (e: Exception) {
-            Log.e(TAG, "fetchCategories: exception", e)
+            log("fetchCategories: EXCEPTION ${e.message}")
             Result.failure(e)
         }
     }
@@ -217,7 +234,7 @@ class WebViewScraper(private val context: Context) {
                                     JSONArray(json).length() > 0
                                 } catch (_: Exception) { false }
 
-                                Log.d(TAG, "poll result: hasItems=$hasItems raw=${raw?.take(100)}")
+                                log("poll: hasItems=$hasItems raw=${raw?.take(150)}")
                                 if (hasItems) {
                                     resolve(json)
                                 } else {
@@ -231,21 +248,20 @@ class WebViewScraper(private val context: Context) {
                     webView.webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
                         override fun onPageStarted(view: WebView, u: String, f: android.graphics.Bitmap?) {
-                            Log.d(TAG, "loadPageAndEval onPageStarted: $u")
+                            log("onPageStarted: $u")
                         }
                         override fun onPageFinished(view: WebView, u: String) {
-                            Log.d(TAG, "loadPageAndEval onPageFinished: $u")
+                            log("onPageFinished: $u")
                             view.evaluateJavascript(antiDetectionJs, null)
-                            // Also dump page title and link count for diagnosis
-                            view.evaluateJavascript("document.title + ' | links:' + document.querySelectorAll('a').length") { info ->
-                                Log.d(TAG, "loadPageAndEval pageInfo: $info")
-                            }
+                            view.evaluateJavascript(
+                                "document.title + ' | links:' + document.querySelectorAll('a').length"
+                            ) { info -> log("pageInfo: $info") }
                         }
                     }
 
                     cont.invokeOnCancellation { resolve(null) }
 
-                    Log.d(TAG, "loadPageAndEval loading: $url")
+                    log("loadPageAndEval: loading $url")
                     webView.loadUrl(url)
                     scheduleEval(POLL_START_MS)
                 }
