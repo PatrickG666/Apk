@@ -230,7 +230,16 @@ class HomeFragment : Fragment() {
         binding.progressBar.visibility = View.GONE
         binding.errorView.visibility = View.GONE
         binding.swipeRefresh.isRefreshing = false
-        log("initial load: ${allVideos.size} videos")
+        log("initial load: ${allVideos.size} videos cat[0]='${allVideos[0].category}'")
+        // Debug: log container HTML of first video link to inspect category structure
+        webView?.evaluateJavascript("""
+            (function(){
+                var a = document.querySelector('a[href*="/videos/view"],a[href*="/video/view"]');
+                if (!a) return 'no-link';
+                var c = a.closest('li,article,.item,.video-item,.video,.thumb-item') || a.parentElement;
+                return c ? c.outerHTML.substring(0,1000) : a.parentElement.outerHTML.substring(0,1000);
+            })();
+        """.trimIndent()) { raw -> log("DEBUG_HTML: ${unescapeJs(raw).take(1000)}") }
         testThumbUrl(allVideos[0].thumbnailUrl)
     }
 
