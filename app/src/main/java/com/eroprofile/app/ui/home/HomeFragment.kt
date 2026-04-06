@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -20,6 +21,8 @@ import com.eroprofile.app.adapters.VideoAdapter
 import com.eroprofile.app.data.models.Video
 import com.eroprofile.app.databinding.FragmentHomeBinding
 import com.eroprofile.app.ui.video.VideoPlayerActivity
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import java.io.File
 import java.text.SimpleDateFormat
@@ -211,10 +214,31 @@ class HomeFragment : Fragment() {
                 binding.errorView.visibility = View.GONE
                 binding.swipeRefresh.isRefreshing = false
                 videoAdapter.submitList(videos)
+                testThumbUrl(videos[0].thumbnailUrl)
             }
         } catch (_: Exception) {
             // ignore parse errors, keep polling
         }
+    }
+
+    private fun testThumbUrl(url: String) {
+        Thread {
+            try {
+                val cookies = CookieManager.getInstance().getCookie("https://www.eroprofile.com") ?: ""
+                log("testThumb cookies=${cookies.take(60)}")
+                val client = OkHttpClient()
+                val resp = client.newCall(
+                    Request.Builder().url(url)
+                        .header("Referer", "https://www.eroprofile.com/")
+                        .apply { if (cookies.isNotEmpty()) header("Cookie", cookies) }
+                        .build()
+                ).execute()
+                log("testThumb status=${resp.code} type=${resp.header("Content-Type")} len=${resp.header("Content-Length")}")
+                resp.close()
+            } catch (e: Exception) {
+                log("testThumb EXCEPTION: ${e.message}")
+            }
+        }.start()
     }
 
     private fun showError(message: String) {
