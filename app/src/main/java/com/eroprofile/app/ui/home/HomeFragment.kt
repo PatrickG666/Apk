@@ -16,7 +16,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.eroprofile.app.adapters.LoadingFooterAdapter
 import com.eroprofile.app.adapters.VideoAdapter
 import com.eroprofile.app.data.models.Video
 import com.eroprofile.app.databinding.FragmentHomeBinding
@@ -38,6 +41,13 @@ class HomeFragment : Fragment() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var videoAdapter: VideoAdapter
+    private lateinit var footerAdapter: LoadingFooterAdapter
+
+    // Pagination state
+    private var currentPage = 1
+    private var isLoadingMore = false
+    private var hasMorePages = true
+    private val allVideos = mutableListOf<Video>()
 
     private val logFile = File(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -104,7 +114,7 @@ class HomeFragment : Fragment() {
         setupSwipeRefresh()
         setupRetry()
 
-        loadUrl(buildUrl(currentSort))
+        loadPage(1)
     }
 
     private fun setupRecyclerView() {
@@ -115,9 +125,29 @@ class HomeFragment : Fragment() {
             }
             startActivity(intent)
         }
+        footerAdapter = LoadingFooterAdapter()
+
+        val gridLayout = GridLayoutManager(requireContext(), 2)
+        gridLayout.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int {
+                // Footer spans full width
+                return if (position >= videoAdapter.itemCount) 2 else 1
+            }
+        }
+
         binding.recyclerVideos.apply {
-            layoutManager = GridLayoutManager(requireContext(), 2)
-            adapter = videoAdapter
+            layoutManager = gridLayout
+            adapter = ConcatAdapter(videoAdapter, footerAdapter)
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    if (dy <= 0) return
+                    val lastVisible = gridLayout.findLastVisibleItemPosition()
+                    val total = gridLayout.itemCount
+                    if (lastVisible >= total - 4 && !isLoadingMore && hasMorePages) {
+                        loadNextPage()
+                    }
+                }
+            })
         }
     }
 
@@ -132,10 +162,7 @@ class HomeFragment : Fragment() {
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
-                log("onPageFinished: $url")
-                view.evaluateJavascript(
-                    "document.title + ' | links:' + document.querySelectorAll('a').length + ' | imgs:' + document.querySelectorAll('img').length"
-                ) { info -> log("pageInfo: $info") }
+                log("onPageFinished page=$currentPage url=$url")
                 pollAttempts = 0
                 handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
             }
@@ -154,14 +181,20 @@ class HomeFragment : Fragment() {
 
     private fun schedulePoll() {
         if (pollAttempts >= maxPollAttempts) {
-            showError("Could not load videos after ${maxPollAttempts * pollIntervalMs / 1000}s")
+            if (currentPage == 1) showError("Could not load videos")
+            else {
+                // No more pages or timeout
+                hasMorePages = false
+                isLoadingMore = false
+                footerAdapter.hide()
+            }
             return
         }
         pollAttempts++
         webView?.evaluateJavascript(extractVideosJs) { raw ->
             val json = unescapeJs(raw)
             val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
-            log("poll #$pollAttempts: count=$count raw=${raw?.take(200)}")
+            log("poll page=$currentPage attempt=$pollAttempts count=$count")
             if (count > 0) {
                 requireActivity().runOnUiThread { handleVideos(json) }
             } else {
@@ -183,21 +216,19 @@ class HomeFragment : Fragment() {
     private fun handleVideos(json: String) {
         try {
             val arr = JSONArray(json)
-            val videos = mutableListOf<Video>()
+            val newVideos = mutableListOf<Video>()
+            val existingUrls = allVideos.map { it.url }.toSet()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val url = o.optString("url", "")
-                if (url.isEmpty()) continue
-                val title = o.optString("title", "Video")
-                val thumb = o.optString("thumb", "")
-                val duration = o.optString("duration", "")
-                videos.add(
+                if (url.isEmpty() || url in existingUrls) continue
+                newVideos.add(
                     Video(
                         id = url.hashCode().toString(),
-                        title = title,
+                        title = o.optString("title", "Video"),
                         url = url,
-                        thumbnailUrl = thumb,
-                        duration = duration,
+                        thumbnailUrl = o.optString("thumb", ""),
+                        duration = o.optString("duration", ""),
                         views = "",
                         rating = "",
                         author = "",
@@ -205,20 +236,42 @@ class HomeFragment : Fragment() {
                     )
                 )
             }
-            log("handleVideos: parsed=${videos.size}")
-            videos.take(3).forEachIndexed { i, v ->
-                log("  video[$i] title=${v.title.take(30)} thumb=${v.thumbnailUrl}")
+
+            log("handleVideos page=$currentPage new=${newVideos.size} total=${allVideos.size + newVideos.size}")
+
+            if (newVideos.isEmpty() && currentPage > 1) {
+                // Empty page = no more content
+                hasMorePages = false
+                isLoadingMore = false
+                footerAdapter.hide()
+                return
             }
-            if (videos.isNotEmpty()) {
+
+            if (newVideos.isNotEmpty()) {
+                allVideos.addAll(newVideos)
                 binding.progressBar.visibility = View.GONE
                 binding.errorView.visibility = View.GONE
                 binding.swipeRefresh.isRefreshing = false
-                videoAdapter.submitList(videos)
-                testThumbUrl(videos[0].thumbnailUrl)
+                videoAdapter.submitList(allVideos.toList())
+                footerAdapter.hide()
+                isLoadingMore = false
+
+                if (currentPage == 1) testThumbUrl(allVideos[0].thumbnailUrl)
             }
         } catch (_: Exception) {
-            // ignore parse errors, keep polling
+            isLoadingMore = false
+            footerAdapter.hide()
         }
+    }
+
+    private fun loadNextPage() {
+        isLoadingMore = true
+        currentPage++
+        footerAdapter.show()
+        log("loadNextPage page=$currentPage")
+        handler.removeCallbacksAndMessages(null)
+        pollAttempts = 0
+        webView?.loadUrl(buildUrl(currentSort, currentPage))
     }
 
     private fun testThumbUrl(url: String) {
@@ -258,33 +311,37 @@ class HomeFragment : Fragment() {
             chip.setOnClickListener {
                 if (currentSort == sort) return@setOnClickListener
                 currentSort = sort
-                loadUrl(buildUrl(sort))
+                loadPage(1)
             }
         }
     }
 
     private fun setupSwipeRefresh() {
-        binding.swipeRefresh.setOnRefreshListener {
-            loadUrl(buildUrl(currentSort))
-        }
+        binding.swipeRefresh.setOnRefreshListener { loadPage(1) }
     }
 
     private fun setupRetry() {
-        binding.btnRetry.setOnClickListener {
-            loadUrl(buildUrl(currentSort))
-        }
+        binding.btnRetry.setOnClickListener { loadPage(1) }
     }
 
-    private fun buildUrl(sort: String): String =
-        "$baseUrl?sort=$sort"
+    private fun buildUrl(sort: String, page: Int = 1): String =
+        if (page <= 1) "$baseUrl?sort=$sort"
+        else "$baseUrl?sort=$sort&page=$page"
 
-    private fun loadUrl(url: String) {
+    private fun loadPage(page: Int) {
         handler.removeCallbacksAndMessages(null)
+        currentPage = page
         pollAttempts = 0
-        binding.progressBar.visibility = View.VISIBLE
-        binding.errorView.visibility = View.GONE
-        videoAdapter.submitList(emptyList())
-        webView?.loadUrl(url)
+        isLoadingMore = false
+        hasMorePages = true
+        if (page == 1) {
+            allVideos.clear()
+            videoAdapter.submitList(emptyList())
+            binding.progressBar.visibility = View.VISIBLE
+            binding.errorView.visibility = View.GONE
+            footerAdapter.hide()
+        }
+        webView?.loadUrl(buildUrl(currentSort, page))
     }
 
     override fun onDestroyView() {
