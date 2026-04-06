@@ -202,7 +202,10 @@ class HomeFragment : Fragment() {
                     )
                 )
             }
-            log("handleVideos: parsed=${videos.size}, first thumb=${videos.firstOrNull()?.thumbnailUrl?.take(80)}")
+            log("handleVideos: parsed=${videos.size}")
+            videos.take(3).forEachIndexed { i, v ->
+                log("  video[$i] title=${v.title.take(30)} thumb=${v.thumbnailUrl}")
+            }
             if (videos.isNotEmpty()) {
                 binding.progressBar.visibility = View.GONE
                 binding.errorView.visibility = View.GONE
