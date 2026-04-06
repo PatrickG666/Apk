@@ -96,8 +96,7 @@ abstract class BaseWebFragment : Fragment() {
                         var s=document.createElement('style');
                         s.id='_ep';
                         s.innerHTML='body,html{background:#1A1A1A!important;color:#E0E0E0!important}' +
-                            '.ad,.ads,.cookie-notice,.popup,.install-app-banner,.download-app,' +
-                            'nav,.navbar,.site-nav,#site-header,.site-header{display:none!important}' +
+                            '.ad,.ads,.cookie-notice,.popup,.install-app-banner,.download-app{display:none!important}' +
                             'a{color:#FF6600!important}';
                         document.head&&document.head.appendChild(s);
                     })();
