@@ -34,11 +34,9 @@ class CategoryVideosFragment : Fragment() {
     private lateinit var videoAdapter: VideoAdapter
     private lateinit var footerAdapter: LoadingFooterAdapter
 
-    // Pagination state
-    private var currentPage = 1
+    private val allVideos = mutableListOf<Video>()
     private var isLoadingMore = false
     private var hasMorePages = true
-    private val allVideos = mutableListOf<Video>()
 
     private var pollAttempts = 0
     private val maxPollAttempts = 15
@@ -104,25 +102,20 @@ class CategoryVideosFragment : Fragment() {
             layoutManager = gridLayout
             adapter = ConcatAdapter(videoAdapter, footerAdapter)
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    if (dy <= 0) return
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    if (dy <= 0 || isLoadingMore || !hasMorePages) return
                     val lastVisible = gridLayout.findLastVisibleItemPosition()
                     val total = gridLayout.itemCount
-                    if (lastVisible >= total - 4 && !isLoadingMore && hasMorePages) {
-                        loadNextPage()
-                    }
+                    if (lastVisible >= total - 4) triggerLoadMore()
                 }
             })
         }
 
-        binding.swipeRefresh.setOnRefreshListener { loadPage(1) }
-        binding.btnRetry.setOnClickListener { loadPage(1) }
+        binding.swipeRefresh.setOnRefreshListener { loadFresh() }
+        binding.btnRetry.setOnClickListener { loadFresh() }
 
         setupWebView()
-
-        val categoryUrl = arguments?.getString("url") ?: ""
-        if (categoryUrl.isNotEmpty()) loadPage(1)
-        else showError("URL categoria mancante")
+        loadFresh()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -140,33 +133,83 @@ class CategoryVideosFragment : Fragment() {
                 handler.postDelayed({ schedulePoll() }, 3000)
             }
         }
-        wv.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun onVideos(json: String) {
-                requireActivity().runOnUiThread { handleVideos(json) }
-            }
-        }, "Android")
         binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
         webView = wv
     }
 
     private fun schedulePoll() {
         if (pollAttempts >= maxPollAttempts) {
-            if (currentPage == 1) showError("Nessun video trovato")
-            else {
-                hasMorePages = false
-                isLoadingMore = false
-                footerAdapter.hide()
-            }
+            showError("Nessun video trovato")
             return
         }
         pollAttempts++
         webView?.evaluateJavascript(extractVideosJs) { raw ->
             val json = unescapeJs(raw)
             val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
-            if (count > 0) requireActivity().runOnUiThread { handleVideos(json) }
+            if (count > 0) requireActivity().runOnUiThread { handleInitialVideos(json) }
             else handler.postDelayed({ schedulePoll() }, 2000)
         }
+    }
+
+    private fun handleInitialVideos(json: String) {
+        val videos = parseJson(json)
+        if (videos.isEmpty()) return
+        allVideos.clear()
+        allVideos.addAll(videos)
+        videoAdapter.submitList(allVideos.toList())
+        binding.progressBar.visibility = View.GONE
+        binding.errorView.visibility = View.GONE
+        binding.swipeRefresh.isRefreshing = false
+    }
+
+    private fun triggerLoadMore() {
+        isLoadingMore = true
+        footerAdapter.show()
+        webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {
+            handler.postDelayed({ pollForNewVideos(0) }, 2500)
+        }
+    }
+
+    private fun pollForNewVideos(attempt: Int) {
+        if (attempt >= 8) {
+            hasMorePages = false
+            isLoadingMore = false
+            requireActivity().runOnUiThread { footerAdapter.hide() }
+            return
+        }
+        val knownUrls = allVideos.map { it.url }.toHashSet()
+        webView?.evaluateJavascript(extractVideosJs) { raw ->
+            val newVideos = parseJson(unescapeJs(raw)).filter { it.url !in knownUrls }
+            if (newVideos.isNotEmpty()) {
+                requireActivity().runOnUiThread {
+                    allVideos.addAll(newVideos)
+                    videoAdapter.submitList(allVideos.toList())
+                    footerAdapter.hide()
+                    isLoadingMore = false
+                }
+            } else {
+                webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {}
+                handler.postDelayed({ pollForNewVideos(attempt + 1) }, 2000)
+            }
+        }
+    }
+
+    private fun parseJson(json: String): List<Video> {
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                val url = o.optString("url")
+                if (url.isEmpty()) null
+                else Video(
+                    id = url.hashCode().toString(),
+                    title = o.optString("title", "Video"),
+                    url = url,
+                    thumbnailUrl = o.optString("thumb"),
+                    duration = o.optString("duration")
+                )
+            }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun unescapeJs(raw: String?): String {
@@ -176,75 +219,21 @@ class CategoryVideosFragment : Fragment() {
         } else raw
     }
 
-    private fun handleVideos(json: String) {
-        try {
-            val arr = JSONArray(json)
-            val existingUrls = allVideos.map { it.url }.toSet()
-            val newVideos = (0 until arr.length()).mapNotNull { i ->
-                val o = arr.getJSONObject(i)
-                val url = o.optString("url")
-                if (url.isEmpty() || url in existingUrls) null
-                else Video(
-                    id = url.hashCode().toString(),
-                    title = o.optString("title", "Video"),
-                    url = url,
-                    thumbnailUrl = o.optString("thumb"),
-                    duration = o.optString("duration")
-                )
-            }
-
-            if (newVideos.isEmpty() && currentPage > 1) {
-                hasMorePages = false
-                isLoadingMore = false
-                footerAdapter.hide()
-                return
-            }
-
-            if (newVideos.isNotEmpty()) {
-                allVideos.addAll(newVideos)
-                binding.progressBar.visibility = View.GONE
-                binding.errorView.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
-                videoAdapter.submitList(allVideos.toList())
-                footerAdapter.hide()
-                isLoadingMore = false
-            }
-        } catch (_: Exception) {
-            isLoadingMore = false
-            footerAdapter.hide()
+    private fun loadFresh() {
+        val url = arguments?.getString("url") ?: run {
+            showError("URL categoria mancante")
+            return
         }
-    }
-
-    private fun loadNextPage() {
-        isLoadingMore = true
-        currentPage++
-        footerAdapter.show()
         handler.removeCallbacksAndMessages(null)
-        pollAttempts = 0
-        webView?.loadUrl(buildPageUrl(currentPage))
-    }
-
-    private fun loadPage(page: Int) {
-        handler.removeCallbacksAndMessages(null)
-        currentPage = page
         pollAttempts = 0
         isLoadingMore = false
         hasMorePages = true
-        if (page == 1) {
-            allVideos.clear()
-            videoAdapter.submitList(emptyList())
-            binding.progressBar.visibility = View.VISIBLE
-            binding.errorView.visibility = View.GONE
-            footerAdapter.hide()
-        }
-        webView?.loadUrl(buildPageUrl(page))
-    }
-
-    private fun buildPageUrl(page: Int): String {
-        val base = arguments?.getString("url") ?: return ""
-        return if (page <= 1) base
-        else if (base.contains("?")) "$base&page=$page"
-        else "$base?page=$page"
+        allVideos.clear()
+        videoAdapter.submitList(emptyList())
+        footerAdapter.hide()
+        binding.progressBar.visibility = View.VISIBLE
+        binding.errorView.visibility = View.GONE
+        webView?.loadUrl(url)
     }
 
     private fun showError(msg: String) {

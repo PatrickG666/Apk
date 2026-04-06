@@ -43,11 +43,16 @@ class HomeFragment : Fragment() {
     private lateinit var videoAdapter: VideoAdapter
     private lateinit var footerAdapter: LoadingFooterAdapter
 
-    // Pagination state
-    private var currentPage = 1
+    // Accumulated video list across lazy-load batches
+    private val allVideos = mutableListOf<Video>()
     private var isLoadingMore = false
     private var hasMorePages = true
-    private val allVideos = mutableListOf<Video>()
+
+    // Initial page load polling
+    private var pollAttempts = 0
+    private val maxPollAttempts = 15
+    private val pollIntervalMs = 2000L
+    private val pollStartDelayMs = 3000L
 
     private val logFile = File(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -60,11 +65,6 @@ class HomeFragment : Fragment() {
     }
 
     private var currentSort = "date"
-    private var pollAttempts = 0
-    private val maxPollAttempts = 15
-    private val pollIntervalMs = 2000L
-    private val pollStartDelayMs = 3000L
-
     private val baseUrl = "https://www.eroprofile.com/m/videos/home"
 
     private val extractVideosJs = """
@@ -114,38 +114,33 @@ class HomeFragment : Fragment() {
         setupSwipeRefresh()
         setupRetry()
 
-        loadPage(1)
+        loadFresh(currentSort)
     }
 
     private fun setupRecyclerView() {
         videoAdapter = VideoAdapter { video ->
-            val intent = Intent(requireContext(), VideoPlayerActivity::class.java).apply {
+            startActivity(Intent(requireContext(), VideoPlayerActivity::class.java).apply {
                 putExtra(VideoPlayerActivity.EXTRA_URL, video.url)
                 putExtra(VideoPlayerActivity.EXTRA_TITLE, video.title)
-            }
-            startActivity(intent)
+            })
         }
         footerAdapter = LoadingFooterAdapter()
 
         val gridLayout = GridLayoutManager(requireContext(), 2)
         gridLayout.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int {
-                // Footer spans full width
-                return if (position >= videoAdapter.itemCount) 2 else 1
-            }
+            override fun getSpanSize(position: Int) =
+                if (position >= videoAdapter.itemCount) 2 else 1
         }
 
         binding.recyclerVideos.apply {
             layoutManager = gridLayout
             adapter = ConcatAdapter(videoAdapter, footerAdapter)
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    if (dy <= 0) return
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    if (dy <= 0 || isLoadingMore || !hasMorePages) return
                     val lastVisible = gridLayout.findLastVisibleItemPosition()
                     val total = gridLayout.itemCount
-                    if (lastVisible >= total - 4 && !isLoadingMore && hasMorePages) {
-                        loadNextPage()
-                    }
+                    if (lastVisible >= total - 4) triggerLoadMore()
                 }
             })
         }
@@ -162,45 +157,108 @@ class HomeFragment : Fragment() {
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
-                log("onPageFinished page=$currentPage url=$url")
+                log("onPageFinished: $url")
                 pollAttempts = 0
                 handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
             }
         }
-        wv.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun onVideos(json: String) {
-                requireActivity().runOnUiThread { handleVideos(json) }
-            }
-        }, "Android")
-
-        val lp = ConstraintLayout.LayoutParams(1, 1)
-        binding.root.addView(wv, lp)
+        binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
         webView = wv
     }
 
+    // ── Initial page load polling ──────────────────────────────────────────────
+
     private fun schedulePoll() {
         if (pollAttempts >= maxPollAttempts) {
-            if (currentPage == 1) showError("Could not load videos")
-            else {
-                // No more pages or timeout
-                hasMorePages = false
-                isLoadingMore = false
-                footerAdapter.hide()
-            }
+            showError("Impossibile caricare i video")
             return
         }
         pollAttempts++
         webView?.evaluateJavascript(extractVideosJs) { raw ->
             val json = unescapeJs(raw)
             val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
-            log("poll page=$currentPage attempt=$pollAttempts count=$count")
+            log("poll #$pollAttempts count=$count")
             if (count > 0) {
-                requireActivity().runOnUiThread { handleVideos(json) }
+                requireActivity().runOnUiThread { handleInitialVideos(json) }
             } else {
                 handler.postDelayed({ schedulePoll() }, pollIntervalMs)
             }
         }
+    }
+
+    private fun handleInitialVideos(json: String) {
+        val videos = parseJson(json)
+        if (videos.isEmpty()) return
+        allVideos.clear()
+        allVideos.addAll(videos)
+        videoAdapter.submitList(allVideos.toList())
+        binding.progressBar.visibility = View.GONE
+        binding.errorView.visibility = View.GONE
+        binding.swipeRefresh.isRefreshing = false
+        log("initial load: ${allVideos.size} videos")
+        testThumbUrl(allVideos[0].thumbnailUrl)
+    }
+
+    // ── Infinite scroll via WebView lazy-load trigger ──────────────────────────
+
+    private fun triggerLoadMore() {
+        isLoadingMore = true
+        footerAdapter.show()
+        log("triggerLoadMore: scrolling WebView, known=${allVideos.size}")
+        // Scroll WebView content to bottom → site's own lazy-load fires
+        webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {
+            handler.postDelayed({ pollForNewVideos(0) }, 2500)
+        }
+    }
+
+    private fun pollForNewVideos(attempt: Int) {
+        if (attempt >= 8) {
+            log("pollForNewVideos: gave up after $attempt attempts")
+            hasMorePages = false
+            isLoadingMore = false
+            requireActivity().runOnUiThread { footerAdapter.hide() }
+            return
+        }
+        val knownUrls = allVideos.map { it.url }.toHashSet()
+        webView?.evaluateJavascript(extractVideosJs) { raw ->
+            val json = unescapeJs(raw)
+            val found = parseJson(json)
+            val newVideos = found.filter { it.url !in knownUrls }
+            log("pollForNewVideos attempt=$attempt found=${found.size} new=${newVideos.size}")
+            if (newVideos.isNotEmpty()) {
+                requireActivity().runOnUiThread {
+                    allVideos.addAll(newVideos)
+                    videoAdapter.submitList(allVideos.toList())
+                    footerAdapter.hide()
+                    isLoadingMore = false
+                }
+            } else {
+                // Scroll again and retry
+                webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {}
+                handler.postDelayed({ pollForNewVideos(attempt + 1) }, 2000)
+            }
+        }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private fun parseJson(json: String): List<Video> {
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                val url = o.optString("url", "")
+                if (url.isEmpty()) null
+                else Video(
+                    id = url.hashCode().toString(),
+                    title = o.optString("title", "Video"),
+                    url = url,
+                    thumbnailUrl = o.optString("thumb", ""),
+                    duration = o.optString("duration", ""),
+                    views = "", rating = "", author = "", isHd = false
+                )
+            }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun unescapeJs(raw: String?): String {
@@ -213,74 +271,11 @@ class HomeFragment : Fragment() {
         } else raw
     }
 
-    private fun handleVideos(json: String) {
-        try {
-            val arr = JSONArray(json)
-            val newVideos = mutableListOf<Video>()
-            val existingUrls = allVideos.map { it.url }.toSet()
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                val url = o.optString("url", "")
-                if (url.isEmpty() || url in existingUrls) continue
-                newVideos.add(
-                    Video(
-                        id = url.hashCode().toString(),
-                        title = o.optString("title", "Video"),
-                        url = url,
-                        thumbnailUrl = o.optString("thumb", ""),
-                        duration = o.optString("duration", ""),
-                        views = "",
-                        rating = "",
-                        author = "",
-                        isHd = false
-                    )
-                )
-            }
-
-            log("handleVideos page=$currentPage new=${newVideos.size} total=${allVideos.size + newVideos.size}")
-
-            if (newVideos.isEmpty() && currentPage > 1) {
-                // Empty page = no more content
-                hasMorePages = false
-                isLoadingMore = false
-                footerAdapter.hide()
-                return
-            }
-
-            if (newVideos.isNotEmpty()) {
-                allVideos.addAll(newVideos)
-                binding.progressBar.visibility = View.GONE
-                binding.errorView.visibility = View.GONE
-                binding.swipeRefresh.isRefreshing = false
-                videoAdapter.submitList(allVideos.toList())
-                footerAdapter.hide()
-                isLoadingMore = false
-
-                if (currentPage == 1) testThumbUrl(allVideos[0].thumbnailUrl)
-            }
-        } catch (_: Exception) {
-            isLoadingMore = false
-            footerAdapter.hide()
-        }
-    }
-
-    private fun loadNextPage() {
-        isLoadingMore = true
-        currentPage++
-        footerAdapter.show()
-        log("loadNextPage page=$currentPage")
-        handler.removeCallbacksAndMessages(null)
-        pollAttempts = 0
-        webView?.loadUrl(buildUrl(currentSort, currentPage))
-    }
-
     private fun testThumbUrl(url: String) {
         Thread {
             try {
                 val cookies = CookieManager.getInstance().getCookie("https://www.eroprofile.com") ?: ""
-                log("testThumb cookies=${cookies.take(60)}")
-                val client = OkHttpClient()
-                val resp = client.newCall(
+                val resp = OkHttpClient().newCall(
                     Request.Builder().url(url)
                         .header("Referer", "https://www.eroprofile.com/")
                         .apply { if (cookies.isNotEmpty()) header("Cookie", cookies) }
@@ -301,47 +296,39 @@ class HomeFragment : Fragment() {
         binding.errorMessage.text = message
     }
 
+    private fun loadFresh(sort: String) {
+        handler.removeCallbacksAndMessages(null)
+        pollAttempts = 0
+        isLoadingMore = false
+        hasMorePages = true
+        allVideos.clear()
+        videoAdapter.submitList(emptyList())
+        footerAdapter.hide()
+        binding.progressBar.visibility = View.VISIBLE
+        binding.errorView.visibility = View.GONE
+        webView?.loadUrl("$baseUrl?sort=$sort")
+    }
+
     private fun setupChips() {
-        val chips = listOf(
+        listOf(
             binding.chipRecent to "date",
             binding.chipPopular to "views",
             binding.chipTopRated to "rated"
-        )
-        chips.forEach { (chip, sort) ->
+        ).forEach { (chip, sort) ->
             chip.setOnClickListener {
                 if (currentSort == sort) return@setOnClickListener
                 currentSort = sort
-                loadPage(1)
+                loadFresh(sort)
             }
         }
     }
 
     private fun setupSwipeRefresh() {
-        binding.swipeRefresh.setOnRefreshListener { loadPage(1) }
+        binding.swipeRefresh.setOnRefreshListener { loadFresh(currentSort) }
     }
 
     private fun setupRetry() {
-        binding.btnRetry.setOnClickListener { loadPage(1) }
-    }
-
-    private fun buildUrl(sort: String, page: Int = 1): String =
-        if (page <= 1) "$baseUrl?sort=$sort"
-        else "$baseUrl?sort=$sort&page=$page"
-
-    private fun loadPage(page: Int) {
-        handler.removeCallbacksAndMessages(null)
-        currentPage = page
-        pollAttempts = 0
-        isLoadingMore = false
-        hasMorePages = true
-        if (page == 1) {
-            allVideos.clear()
-            videoAdapter.submitList(emptyList())
-            binding.progressBar.visibility = View.VISIBLE
-            binding.errorView.visibility = View.GONE
-            footerAdapter.hide()
-        }
-        webView?.loadUrl(buildUrl(currentSort, page))
+        binding.btnRetry.setOnClickListener { loadFresh(currentSort) }
     }
 
     override fun onDestroyView() {
