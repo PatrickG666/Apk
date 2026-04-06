@@ -10,8 +10,6 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.model.GlideUrl
-import com.bumptech.glide.load.model.LazyHeaders
 import com.eroprofile.app.R
 import com.eroprofile.app.data.models.Category
 
@@ -38,14 +36,8 @@ class CategoryAdapter(
             tvName.text = category.name
 
             if (category.thumbnailUrl.isNotEmpty()) {
-                val glideUrl = GlideUrl(
-                    category.thumbnailUrl,
-                    LazyHeaders.Builder()
-                        .addHeader("Referer", "https://www.eroprofile.com/")
-                        .build()
-                )
                 Glide.with(itemView.context)
-                    .load(glideUrl)
+                    .load(category.thumbnailUrl)
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
                     .centerCrop()
                     .placeholder(R.color.ep_surface_variant)

@@ -10,8 +10,6 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.model.GlideUrl
-import com.bumptech.glide.load.model.LazyHeaders
 import com.eroprofile.app.R
 import com.eroprofile.app.data.models.Video
 
@@ -71,14 +69,8 @@ class VideoAdapter(
 
             tvHd.visibility = if (video.isHd) View.VISIBLE else View.GONE
 
-            val glideUrl = GlideUrl(
-                video.thumbnailUrl,
-                LazyHeaders.Builder()
-                    .addHeader("Referer", "https://www.eroprofile.com/")
-                    .build()
-            )
             Glide.with(itemView.context)
-                .load(glideUrl)
+                .load(video.thumbnailUrl)
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .centerCrop()
                 .placeholder(R.color.ep_surface_variant)
