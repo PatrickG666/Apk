@@ -5,6 +5,7 @@ import android.os.Environment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
@@ -14,6 +15,8 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.eroprofile.app.R
@@ -31,7 +34,7 @@ class VideoAdapter(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
         "ep_debug.txt"
     )
-    private var logged = false  // log only first failure to avoid spam
+    private var logged = false
 
     private fun log(msg: String) {
         val ts = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
@@ -45,6 +48,7 @@ class VideoAdapter(
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
+        if (!logged) { logged = true; log("onBindViewHolder called for pos=$position") }
         holder.bind(getItem(position))
     }
 
@@ -69,10 +73,21 @@ class VideoAdapter(
             tvAuthor.text = video.author
             tvHd.visibility = if (video.isHd) View.VISIBLE else View.GONE
 
+            val cookies = runCatching {
+                CookieManager.getInstance().getCookie("https://www.eroprofile.com") ?: ""
+            }.getOrDefault("")
+
+            val glideUrl = GlideUrl(
+                video.thumbnailUrl,
+                LazyHeaders.Builder()
+                    .addHeader("Referer", "https://www.eroprofile.com/")
+                    .apply { if (cookies.isNotEmpty()) addHeader("Cookie", cookies) }
+                    .build()
+            )
+
             Glide.with(itemView.context)
-                .load(video.thumbnailUrl)
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .skipMemoryCache(true)
+                .load(glideUrl)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .centerCrop()
                 .placeholder(R.color.ep_surface_variant)
                 .error(R.color.ep_surface_variant)
@@ -81,18 +96,14 @@ class VideoAdapter(
                         e: GlideException?, model: Any?,
                         target: Target<Drawable>, isFirstResource: Boolean
                     ): Boolean {
-                        if (!logged) {
-                            logged = true
-                            log("FAIL url=${video.thumbnailUrl}")
-                            log("     causes=${e?.causes?.joinToString { it.javaClass.simpleName + ": " + it.message }}")
-                        }
+                        log("FAIL pos=$adapterPosition cause=${e?.causes?.firstOrNull()?.message}")
                         return false
                     }
                     override fun onResourceReady(
                         resource: Drawable, model: Any, target: Target<Drawable>?,
                         dataSource: DataSource, isFirstResource: Boolean
                     ): Boolean {
-                        if (!logged) { logged = true; log("OK url=${video.thumbnailUrl}") }
+                        log("OK pos=$adapterPosition src=$dataSource")
                         return false
                     }
                 })
