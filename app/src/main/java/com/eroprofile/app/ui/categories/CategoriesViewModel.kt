@@ -1,6 +1,7 @@
 package com.eroprofile.app.ui.categories
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -24,12 +25,20 @@ class CategoriesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadCategories() {
+        Log.d("CategoriesVM", "loadCategories: start")
         _isLoading.value = true
         viewModelScope.launch {
             val result = repository.getCategories()
             _isLoading.value = false
-            result.onSuccess { _categories.value = it }
-                .onFailure { _categories.value = emptyList() }
+            result
+                .onSuccess {
+                    Log.d("CategoriesVM", "loadCategories: success, count=${it.size}")
+                    _categories.value = it
+                }
+                .onFailure {
+                    Log.e("CategoriesVM", "loadCategories: failure", it)
+                    _categories.value = emptyList()
+                }
         }
     }
 }
