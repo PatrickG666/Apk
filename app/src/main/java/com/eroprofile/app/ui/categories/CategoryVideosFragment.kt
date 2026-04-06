@@ -38,6 +38,7 @@ class CategoryVideosFragment : Fragment() {
     private var isLoadingMore = false
     private var hasMorePages = true
 
+    private var currentPage = 1
     private var pollAttempts = 0
     private val maxPollAttempts = 15
 
@@ -130,7 +131,11 @@ class CategoryVideosFragment : Fragment() {
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 pollAttempts = 0
-                handler.postDelayed({ schedulePoll() }, 3000)
+                if (isLoadingMore) {
+                    handler.postDelayed({ pollForNewVideos(0) }, 3000)
+                } else {
+                    handler.postDelayed({ schedulePoll() }, 3000)
+                }
             }
         }
         binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
@@ -164,14 +169,15 @@ class CategoryVideosFragment : Fragment() {
 
     private fun triggerLoadMore() {
         isLoadingMore = true
+        currentPage++
         footerAdapter.show()
-        webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {
-            handler.postDelayed({ pollForNewVideos(0) }, 2500)
-        }
+        handler.removeCallbacksAndMessages(null)
+        pollAttempts = 0
+        webView?.loadUrl(buildPageUrl(currentPage))
     }
 
     private fun pollForNewVideos(attempt: Int) {
-        if (attempt >= 8) {
+        if (attempt >= maxPollAttempts) {
             hasMorePages = false
             isLoadingMore = false
             requireActivity().runOnUiThread { footerAdapter.hide() }
@@ -188,10 +194,18 @@ class CategoryVideosFragment : Fragment() {
                     isLoadingMore = false
                 }
             } else {
-                webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {}
                 handler.postDelayed({ pollForNewVideos(attempt + 1) }, 2000)
             }
         }
+    }
+
+    private fun buildPageUrl(page: Int): String {
+        val base = arguments?.getString("url") ?: return ""
+        if (page <= 1) return base
+        // Extract niche from category URL (e.g. ?niche=amateur) or default to "all"
+        val uri = android.net.Uri.parse(base)
+        val niche = uri.getQueryParameter("niche") ?: "all"
+        return "https://www.eroprofile.com/m/videos/search?niche=$niche&pnum=$page"
     }
 
     private fun parseJson(json: String): List<Video> {
@@ -225,6 +239,7 @@ class CategoryVideosFragment : Fragment() {
             return
         }
         handler.removeCallbacksAndMessages(null)
+        currentPage = 1
         pollAttempts = 0
         isLoadingMore = false
         hasMorePages = true

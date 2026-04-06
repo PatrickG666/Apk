@@ -157,9 +157,13 @@ class HomeFragment : Fragment() {
         wv.webChromeClient = WebChromeClient()
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
-                log("onPageFinished: $url")
+                log("onPageFinished page=$currentPage: $url")
                 pollAttempts = 0
-                handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
+                if (isLoadingMore) {
+                    handler.postDelayed({ pollForNewVideos(0) }, pollStartDelayMs)
+                } else {
+                    handler.postDelayed({ schedulePoll() }, pollStartDelayMs)
+                }
             }
         }
         binding.root.addView(wv, ConstraintLayout.LayoutParams(1, 1))
@@ -199,21 +203,22 @@ class HomeFragment : Fragment() {
         testThumbUrl(allVideos[0].thumbnailUrl)
     }
 
-    // ── Infinite scroll via WebView lazy-load trigger ──────────────────────────
+    // ── Infinite scroll via URL pagination ────────────────────────────────────
+
+    private var currentPage = 1
 
     private fun triggerLoadMore() {
         isLoadingMore = true
+        currentPage++
         footerAdapter.show()
-        log("triggerLoadMore: scrolling WebView, known=${allVideos.size}")
-        // Scroll WebView content to bottom → site's own lazy-load fires
-        webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {
-            handler.postDelayed({ pollForNewVideos(0) }, 2500)
-        }
+        log("triggerLoadMore: loading page=$currentPage")
+        handler.removeCallbacksAndMessages(null)
+        pollAttempts = 0
+        webView?.loadUrl(buildPageUrl(currentSort, currentPage))
     }
 
     private fun pollForNewVideos(attempt: Int) {
-        if (attempt >= 8) {
-            log("pollForNewVideos: gave up after $attempt attempts")
+        if (attempt >= maxPollAttempts) {
             hasMorePages = false
             isLoadingMore = false
             requireActivity().runOnUiThread { footerAdapter.hide() }
@@ -221,10 +226,9 @@ class HomeFragment : Fragment() {
         }
         val knownUrls = allVideos.map { it.url }.toHashSet()
         webView?.evaluateJavascript(extractVideosJs) { raw ->
-            val json = unescapeJs(raw)
-            val found = parseJson(json)
+            val found = parseJson(unescapeJs(raw))
             val newVideos = found.filter { it.url !in knownUrls }
-            log("pollForNewVideos attempt=$attempt found=${found.size} new=${newVideos.size}")
+            log("pollMore attempt=$attempt found=${found.size} new=${newVideos.size}")
             if (newVideos.isNotEmpty()) {
                 requireActivity().runOnUiThread {
                     allVideos.addAll(newVideos)
@@ -233,12 +237,14 @@ class HomeFragment : Fragment() {
                     isLoadingMore = false
                 }
             } else {
-                // Scroll again and retry
-                webView?.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);") {}
-                handler.postDelayed({ pollForNewVideos(attempt + 1) }, 2000)
+                handler.postDelayed({ pollForNewVideos(attempt + 1) }, pollIntervalMs)
             }
         }
     }
+
+    private fun buildPageUrl(sort: String, page: Int): String =
+        if (page <= 1) "$baseUrl?sort=$sort"
+        else "https://www.eroprofile.com/m/videos/search?niche=all&sort=$sort&pnum=$page"
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -298,6 +304,7 @@ class HomeFragment : Fragment() {
 
     private fun loadFresh(sort: String) {
         handler.removeCallbacksAndMessages(null)
+        currentPage = 1
         pollAttempts = 0
         isLoadingMore = false
         hasMorePages = true
