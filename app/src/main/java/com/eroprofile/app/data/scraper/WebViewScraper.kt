@@ -6,6 +6,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -16,6 +17,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.jsoup.Jsoup
 import org.json.JSONArray
 import java.io.File
 import java.text.SimpleDateFormat
@@ -129,25 +133,48 @@ class WebViewScraper(private val context: Context) {
     suspend fun fetchCategories(): Result<List<Category>> {
         val url = "$BASE_URL/m/video/categories"
         log("fetchCategories: START → $url")
-        return try {
-            val json = loadPageAndEval(url, extractCategoriesJS)
-            log("fetchCategories: json=${json?.take(300) ?: "NULL (timeout)"}")
-            if (json == null) return Result.failure(Exception("Timeout caricamento pagina"))
-            val arr = JSONArray(json)
-            log("fetchCategories: arr.length=${arr.length()}")
-            val categories = (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                Category(
-                    name = o.optString("name", ""),
-                    url = o.optString("url", ""),
-                    thumbnailUrl = o.optString("thumb", "")
-                )
-            }.filter { it.name.isNotEmpty() && it.url.isNotEmpty() }
-            log("fetchCategories: DONE filtered=${categories.size}")
-            Result.success(categories)
-        } catch (e: Exception) {
-            log("fetchCategories: EXCEPTION ${e.message}")
-            Result.failure(e)
+        return withContext(Dispatchers.IO) {
+            try {
+                // Reuse Cloudflare cookies set by the visible WebView
+                val cookies = CookieManager.getInstance().getCookie(BASE_URL) ?: ""
+                log("fetchCategories: cookies=${cookies.take(80)}")
+
+                val client = OkHttpClient.Builder().followRedirects(true).build()
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7")
+                    .apply { if (cookies.isNotEmpty()) header("Cookie", cookies) }
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val html = response.body?.string() ?: ""
+                log("fetchCategories: status=${response.code} htmlLen=${html.length}")
+
+                if (html.isEmpty()) return@withContext Result.failure(Exception("Risposta vuota dal server"))
+
+                val doc = Jsoup.parse(html, BASE_URL)
+                val categories = doc.select("a[href]").mapNotNull { el ->
+                    val href = el.absUrl("href")
+                    if (!href.contains("categor", ignoreCase = true) &&
+                        !href.contains("tag=", ignoreCase = true)) return@mapNotNull null
+                    val name = el.text().trim()
+                    val img = el.selectFirst("img")
+                    val thumb = img?.attr("data-src")?.ifEmpty { null }
+                        ?: img?.attr("src") ?: ""
+                    if (name.isEmpty() || href.isEmpty()) return@mapNotNull null
+                    Category(name = name, url = href, thumbnailUrl = thumb)
+                }.distinctBy { it.url }
+
+                log("fetchCategories: DONE found=${categories.size}" +
+                    if (categories.isEmpty()) " HTML[0..300]=${html.take(300)}" else
+                    " first=${categories[0].name}")
+                Result.success(categories)
+            } catch (e: Exception) {
+                log("fetchCategories: EXCEPTION ${e.message}")
+                Result.failure(e)
+            }
         }
     }
 
