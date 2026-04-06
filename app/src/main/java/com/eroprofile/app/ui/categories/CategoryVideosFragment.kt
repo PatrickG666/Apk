@@ -8,7 +8,6 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -37,7 +36,6 @@ class CategoryVideosFragment : Fragment() {
     private val allVideos = mutableListOf<Video>()
     private var isLoadingMore = false
     private var hasMorePages = true
-
     private var currentPage = 1
     private var pollAttempts = 0
     private val maxPollAttempts = 20
@@ -113,8 +111,7 @@ class CategoryVideosFragment : Fragment() {
                 override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0 || isLoadingMore || !hasMorePages) return
                     val lastVisible = gridLayout.findLastVisibleItemPosition()
-                    val total = gridLayout.itemCount
-                    if (lastVisible >= total - 4) triggerLoadMore()
+                    if (lastVisible >= gridLayout.itemCount - 4) triggerLoadMore()
                 }
             })
         }
@@ -141,28 +138,22 @@ class CategoryVideosFragment : Fragment() {
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 pollAttempts = 0
-                if (isLoadingMore) {
-                    handler.postDelayed({ pollForNewVideos(0) }, 0)
-                } else {
-                    handler.postDelayed({ schedulePoll() }, 0)
-                }
+                if (isLoadingMore) pollForNewVideos(0) else schedulePoll()
             }
 
             override fun shouldInterceptRequest(
-                view: WebView,
-                request: android.webkit.WebResourceRequest
+                view: WebView, request: android.webkit.WebResourceRequest
             ): android.webkit.WebResourceResponse? {
                 val url = request.url.toString()
-                if (url.contains("google-analytics") ||
-                    url.contains("googletagmanager") ||
-                    url.contains("doubleclick") ||
-                    url.contains("facebook.net") ||
+                if (url.contains("google-analytics") || url.contains("googletagmanager") ||
+                    url.contains("doubleclick") || url.contains("facebook.net") ||
                     url.contains("/ads/") ||
                     url.endsWith(".woff") || url.endsWith(".woff2") ||
                     url.endsWith(".ttf") || url.endsWith(".otf")
                 ) {
-                    return android.webkit.WebResourceResponse("text/plain", "utf-8",
-                        java.io.ByteArrayInputStream(ByteArray(0)))
+                    return android.webkit.WebResourceResponse(
+                        "text/plain", "utf-8", java.io.ByteArrayInputStream(ByteArray(0))
+                    )
                 }
                 return super.shouldInterceptRequest(view, request)
             }
@@ -178,22 +169,20 @@ class CategoryVideosFragment : Fragment() {
         }
         pollAttempts++
         webView?.evaluateJavascript(extractVideosJs) { raw ->
-            val json = unescapeJs(raw)
-            val count = try { JSONArray(json).length() } catch (_: Exception) { -1 }
-            if (count > 0) requireActivity().runOnUiThread { handleInitialVideos(json) }
-            else handler.postDelayed({ schedulePoll() }, pollIntervalMs)
+            val videos = parseJson(unescapeJs(raw))
+            if (videos.isNotEmpty()) {
+                requireActivity().runOnUiThread {
+                    allVideos.clear()
+                    allVideos.addAll(videos)
+                    videoAdapter.submitList(allVideos.toList())
+                    binding.progressBar.visibility = View.GONE
+                    binding.errorView.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
+                }
+            } else {
+                handler.postDelayed({ schedulePoll() }, pollIntervalMs)
+            }
         }
-    }
-
-    private fun handleInitialVideos(json: String) {
-        val videos = parseJson(json)
-        if (videos.isEmpty()) return
-        allVideos.clear()
-        allVideos.addAll(videos)
-        videoAdapter.submitList(allVideos.toList())
-        binding.progressBar.visibility = View.GONE
-        binding.errorView.visibility = View.GONE
-        binding.swipeRefresh.isRefreshing = false
     }
 
     private fun triggerLoadMore() {
@@ -231,30 +220,27 @@ class CategoryVideosFragment : Fragment() {
     private fun buildPageUrl(page: Int): String {
         val base = arguments?.getString("url") ?: return ""
         if (page <= 1) return base
-        // Extract niche from category URL (e.g. ?niche=amateur) or default to "all"
         val uri = android.net.Uri.parse(base)
         val niche = uri.getQueryParameter("niche") ?: "all"
         return "https://www.eroprofile.com/m/videos/search?niche=$niche&pnum=$page"
     }
 
-    private fun parseJson(json: String): List<Video> {
-        return try {
-            val arr = JSONArray(json)
-            (0 until arr.length()).mapNotNull { i ->
-                val o = arr.getJSONObject(i)
-                val url = o.optString("url")
-                if (url.isEmpty()) null
-                else Video(
-                    id = url.hashCode().toString(),
-                    title = o.optString("title", "Video"),
-                    url = url,
-                    thumbnailUrl = o.optString("thumb"),
-                    duration = o.optString("duration"),
-                    category = o.optString("category", "")
-                )
-            }
-        } catch (_: Exception) { emptyList() }
-    }
+    private fun parseJson(json: String): List<Video> = try {
+        val arr = JSONArray(json)
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.getJSONObject(i)
+            val url = o.optString("url")
+            if (url.isEmpty()) null
+            else Video(
+                id = url.hashCode().toString(),
+                title = o.optString("title", "Video"),
+                url = url,
+                thumbnailUrl = o.optString("thumb"),
+                duration = o.optString("duration"),
+                category = o.optString("category", "")
+            )
+        }
+    } catch (_: Exception) { emptyList() }
 
     private fun unescapeJs(raw: String?): String {
         if (raw == null) return "[]"
@@ -264,10 +250,7 @@ class CategoryVideosFragment : Fragment() {
     }
 
     private fun loadFresh() {
-        val url = arguments?.getString("url") ?: run {
-            showError("URL categoria mancante")
-            return
-        }
+        val url = arguments?.getString("url") ?: run { showError("URL categoria mancante"); return }
         handler.removeCallbacksAndMessages(null)
         currentPage = 1
         pollAttempts = 0
