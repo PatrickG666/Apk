@@ -44,7 +44,7 @@ class HomeFragment : Fragment() {
     private val maxPollAttempts = 20
     private val pollIntervalMs = 800L
 
-    private val baseUrl = "https://www.eroprofile.com/m/videos/home"
+    private val baseUrl = "https://www.eroprofile.com/m/videos/search?niche=all"
 
     private val extractVideosJs = """
         (function() {
@@ -223,8 +223,8 @@ class HomeFragment : Fragment() {
     }
 
     private fun buildPageUrl(sort: String, page: Int): String =
-        if (page <= 1) "$baseUrl?sort=$sort"
-        else "https://www.eroprofile.com/m/videos/search?niche=all&sort=$sort&pnum=$page"
+        if (page <= 1) "$baseUrl&sort=$sort"
+        else "$baseUrl&sort=$sort&pnum=$page"
 
     private fun parseJson(json: String): List<Video> = try {
         val arr = JSONArray(json)
@@ -272,7 +272,7 @@ class HomeFragment : Fragment() {
         footerAdapter.hide()
         binding.progressBar.visibility = View.VISIBLE
         binding.errorView.visibility = View.GONE
-        webView?.loadUrl("$baseUrl?sort=$sort")
+        webView?.loadUrl("$baseUrl&sort=$sort")
     }
 
     private fun setupChips() {
