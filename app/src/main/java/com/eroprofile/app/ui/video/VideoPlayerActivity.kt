@@ -13,6 +13,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import com.eroprofile.app.databinding.ActivityVideoPlayerBinding
 import java.io.ByteArrayInputStream
 
@@ -100,6 +101,14 @@ class VideoPlayerActivity : AppCompatActivity() {
         binding.videoView.apply {
             setVideoURI(Uri.parse(streamUrl))
             setOnPreparedListener { mp ->
+                mp.setOnVideoSizeChangedListener { _, width, height ->
+                    if (width > 0 && height > 0) {
+                        val screenW = resources.displayMetrics.widthPixels
+                        val lp = binding.videoView.layoutParams as ConstraintLayout.LayoutParams
+                        lp.height = (screenW.toFloat() * height / width).toInt()
+                        binding.videoView.layoutParams = lp
+                    }
+                }
                 mp.setOnInfoListener { _, what, _ ->
                     if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
                         binding.loadingView.visibility = View.GONE
