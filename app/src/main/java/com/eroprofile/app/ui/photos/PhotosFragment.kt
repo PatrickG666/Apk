@@ -443,7 +443,7 @@ class PhotosFragment : Fragment() {
             }
         }
 
-        private inner class PhotoDiff : DiffUtil.ItemCallback<Photo>() {
+        private class PhotoDiff : DiffUtil.ItemCallback<Photo>() {
             override fun areItemsTheSame(a: Photo, b: Photo) = a.url == b.url
             override fun areContentsTheSame(a: Photo, b: Photo) = a == b
         }
