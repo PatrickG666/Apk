@@ -6,14 +6,10 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- ExoPlayer view (full screen below topBar) -->
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/playerView"
+    <VideoView
+        android:id="@+id/videoView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="@color/black"
-        app:resize_mode="fit"
-        app:show_timeout="4000"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -57,7 +53,7 @@
 
     </LinearLayout>
 
-    <!-- Loading state (centered) -->
+    <!-- Loading state -->
     <LinearLayout
         android:id="@+id/loadingView"
         android:layout_width="wrap_content"
@@ -84,7 +80,7 @@
 
     </LinearLayout>
 
-    <!-- Error state (centered) -->
+    <!-- Error state -->
     <LinearLayout
         android:id="@+id/errorView"
         android:layout_width="wrap_content"

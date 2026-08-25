@@ -13,8 +13,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.ConcatAdapter
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.eroprofile.app.adapters.LoadingFooterAdapter
 import com.eroprofile.app.adapters.VideoAdapter
@@ -109,20 +108,15 @@ class HomeFragment : Fragment() {
         }
         footerAdapter = LoadingFooterAdapter()
 
-        val gridLayout = GridLayoutManager(requireContext(), 2)
-        gridLayout.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int) =
-                if (position >= videoAdapter.itemCount) 2 else 1
-        }
-
+        val linearLayout = LinearLayoutManager(requireContext())
         binding.recyclerVideos.apply {
-            layoutManager = gridLayout
-            adapter = ConcatAdapter(videoAdapter, footerAdapter)
+            layoutManager = linearLayout
+            adapter = androidx.recyclerview.widget.ConcatAdapter(videoAdapter, footerAdapter)
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0 || isLoadingMore || !hasMorePages) return
-                    val lastVisible = gridLayout.findLastVisibleItemPosition()
-                    if (lastVisible >= gridLayout.itemCount - 4) triggerLoadMore()
+                    val lastVisible = linearLayout.findLastVisibleItemPosition()
+                    if (lastVisible >= linearLayout.itemCount - 4) triggerLoadMore()
                 }
             })
         }

@@ -12,4 +12,8 @@
         android:id="@+id/nav_categories"
         android:icon="@drawable/ic_categories"
         android:title="@string/nav_categories" />
+    <item
+        android:id="@+id/nav_photos"
+        android:icon="@drawable/ic_photos"
+        android:title="@string/nav_photos" />
 </menu>

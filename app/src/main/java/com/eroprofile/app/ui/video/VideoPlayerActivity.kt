@@ -2,17 +2,17 @@ package com.eroprofile.app.ui.video
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.widget.MediaController
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
 import com.eroprofile.app.databinding.ActivityVideoPlayerBinding
 import java.io.ByteArrayInputStream
 
@@ -24,7 +24,6 @@ class VideoPlayerActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityVideoPlayerBinding
-    private var player: ExoPlayer? = null
     private var scraperWebView: WebView? = null
     private var streamFound = false
     private var pageUrl = ""
@@ -42,13 +41,20 @@ class VideoPlayerActivity : AppCompatActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
         }
 
-        setupPlayer()
+        setupVideoView()
         setupScraperWebView()
     }
 
-    private fun setupPlayer() {
-        player = ExoPlayer.Builder(this).build()
-        binding.playerView.player = player
+    private fun setupVideoView() {
+        val mc = MediaController(this)
+        mc.setAnchorView(binding.videoView)
+        binding.videoView.setMediaController(mc)
+
+        binding.videoView.setOnErrorListener { _, _, _ ->
+            binding.loadingView.visibility = View.GONE
+            binding.errorView.visibility = View.VISIBLE
+            true
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -71,14 +77,12 @@ class VideoPlayerActivity : AppCompatActivity() {
                 if (!streamFound && isVideoStream(url)) {
                     streamFound = true
                     runOnUiThread { playStream(url) }
-                    // Block WebView from downloading the video (save bandwidth)
                     return WebResourceResponse("text/plain", "UTF-8",
                         ByteArrayInputStream(ByteArray(0)))
                 }
                 return null
             }
         }
-        // Attach to window (1×1px) so it can make network requests
         binding.root.addView(wv, android.view.ViewGroup.LayoutParams(1, 1))
         scraperWebView = wv
         wv.loadUrl(pageUrl)
@@ -93,26 +97,32 @@ class VideoPlayerActivity : AppCompatActivity() {
 
     private fun playStream(streamUrl: String) {
         binding.loadingView.visibility = View.GONE
-        player?.apply {
-            setMediaItem(MediaItem.fromUri(streamUrl))
-            prepare()
-            playWhenReady = true
+        binding.videoView.apply {
+            setVideoURI(Uri.parse(streamUrl))
+            setOnPreparedListener { mp ->
+                mp.setOnInfoListener { _, what, _ ->
+                    if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+                        binding.loadingView.visibility = View.GONE
+                    }
+                    false
+                }
+                start()
+            }
         }
-    }
-
-    private fun showError() {
-        binding.loadingView.visibility = View.GONE
-        binding.errorView.visibility = View.VISIBLE
     }
 
     override fun onPause() {
         super.onPause()
-        player?.pause()
+        if (binding.videoView.isPlaying) binding.videoView.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        binding.videoView.resume()
     }
 
     override fun onDestroy() {
-        player?.release()
-        player = null
+        binding.videoView.stopPlayback()
         scraperWebView?.destroy()
         scraperWebView = null
         super.onDestroy()

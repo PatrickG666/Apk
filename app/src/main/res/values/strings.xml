@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">EroProfile v3</string>
+    <string name="app_name">EroProfile</string>
+    <string name="nav_photos">Foto</string>
     <string name="nav_home">Home</string>
     <string name="nav_search">Cerca</string>
     <string name="nav_categories">Categorie</string>

@@ -1,7 +1,6 @@
-package com.eroprofile.app.ui.categories
+package com.eroprofile.app.ui.photos
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -11,28 +10,32 @@ import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.eroprofile.app.adapters.LoadingFooterAdapter
-import com.eroprofile.app.adapters.VideoAdapter
-import com.eroprofile.app.data.models.Video
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
+import com.eroprofile.app.R
 import com.eroprofile.app.databinding.FragmentHomeBinding
-import com.eroprofile.app.ui.video.VideoPlayerActivity
 import org.json.JSONArray
+import android.webkit.CookieManager
 
-class CategoryVideosFragment : Fragment() {
+class PhotosFragment : Fragment() {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
     private var webView: WebView? = null
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var videoAdapter: VideoAdapter
-    private lateinit var footerAdapter: LoadingFooterAdapter
+    private lateinit var photoAdapter: PhotoAdapter
 
-    private val allVideos = mutableListOf<Video>()
+    private val allPhotos = mutableListOf<String>()
     private var isLoadingMore = false
     private var hasMorePages = true
     private var currentPage = 1
@@ -40,36 +43,23 @@ class CategoryVideosFragment : Fragment() {
     private val maxPollAttempts = 20
     private val pollIntervalMs = 800L
 
-    private val extractVideosJs = """
+    private val baseUrl = "https://www.eroprofile.com/m/photos/home"
+
+    private val extractPhotosJs = """
         (function() {
             try {
                 var results = [];
                 var seen = {};
                 document.querySelectorAll('a[href]').forEach(function(a) {
                     var href = a.href || '';
-                    if (!href.match(/\/video[s]?\/view|\/m\/video\/view|\/watch\//i)) return;
+                    if (!href.match(/\/photos\/view|\/m\/photo\/view/i)) return;
                     if (seen[href]) return;
                     seen[href] = true;
                     var img = a.querySelector('img');
                     if (!img) return;
                     var thumb = img.getAttribute('data-src') || img.getAttribute('data-lazy') || img.getAttribute('data-original') || img.src || '';
-                    var title = a.getAttribute('title') || img.getAttribute('alt') || '';
-                    if (!title) {
-                        var p = a.parentElement;
-                        if (p) { var t = p.querySelector('.title,.name,h3,h4'); if (t) title = t.textContent.trim(); }
-                    }
-                    if (!title || title.length < 2) return;
-                    var dur = '';
-                    var d = a.querySelector('[class*=dur],[class*=time],[class*=len]');
-                    if (!d && a.parentElement) d = a.parentElement.querySelector('[class*=dur],[class*=time],[class*=len]');
-                    if (d) dur = d.textContent.trim();
-                    var cat = '';
-                    var container = a.closest('li,article,[class*=item],[class*=video],[class*=thumb]') || a.parentElement;
-                    if (container) {
-                        var cl = container.querySelector('a[href*="niche"],a[href*="/tag/"],a[href*="categor"],[class*=niche],[class*=categ],[class*=tag]');
-                        if (cl) cat = cl.textContent.trim();
-                    }
-                    results.push({url:href, title:title, thumb:thumb, duration:dur, category:cat});
+                    if (!thumb || thumb.endsWith('.gif')) return;
+                    results.push({url:href, thumb:thumb});
                 });
                 return JSON.stringify(results);
             } catch(e) { return '[]'; }
@@ -89,23 +79,16 @@ class CategoryVideosFragment : Fragment() {
 
         binding.sortChipsScroll.visibility = View.GONE
 
-        videoAdapter = VideoAdapter { video ->
-            startActivity(Intent(requireContext(), VideoPlayerActivity::class.java).apply {
-                putExtra(VideoPlayerActivity.EXTRA_URL, video.url)
-                putExtra(VideoPlayerActivity.EXTRA_TITLE, video.title)
-            })
-        }
-        footerAdapter = LoadingFooterAdapter()
-
-        val linearLayout = LinearLayoutManager(requireContext())
+        photoAdapter = PhotoAdapter()
+        val gridLayout = GridLayoutManager(requireContext(), 2)
         binding.recyclerVideos.apply {
-            layoutManager = linearLayout
-            adapter = androidx.recyclerview.widget.ConcatAdapter(videoAdapter, footerAdapter)
+            layoutManager = gridLayout
+            adapter = photoAdapter
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0 || isLoadingMore || !hasMorePages) return
-                    val lastVisible = linearLayout.findLastVisibleItemPosition()
-                    if (lastVisible >= linearLayout.itemCount - 4) triggerLoadMore()
+                    val lastVisible = gridLayout.findLastVisibleItemPosition()
+                    if (lastVisible >= gridLayout.itemCount - 4) triggerLoadMore()
                 }
             })
         }
@@ -123,7 +106,7 @@ class CategoryVideosFragment : Fragment() {
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36"
+            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
             cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
             loadsImagesAutomatically = false
             blockNetworkImage = true
@@ -132,7 +115,7 @@ class CategoryVideosFragment : Fragment() {
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 pollAttempts = 0
-                if (isLoadingMore) pollForNewVideos(0) else schedulePoll()
+                if (isLoadingMore) pollForNewPhotos(0) else schedulePoll()
             }
 
             override fun shouldInterceptRequest(
@@ -141,7 +124,6 @@ class CategoryVideosFragment : Fragment() {
                 val url = request.url.toString()
                 if (url.contains("google-analytics") || url.contains("googletagmanager") ||
                     url.contains("doubleclick") || url.contains("facebook.net") ||
-                    url.contains("/ads/") ||
                     url.endsWith(".woff") || url.endsWith(".woff2") ||
                     url.endsWith(".ttf") || url.endsWith(".otf")
                 ) {
@@ -157,82 +139,56 @@ class CategoryVideosFragment : Fragment() {
     }
 
     private fun schedulePoll() {
-        if (pollAttempts >= maxPollAttempts) {
-            showError("Nessun video trovato")
-            return
-        }
+        if (pollAttempts >= maxPollAttempts) { showError("Nessuna foto trovata"); return }
         pollAttempts++
-        webView?.evaluateJavascript(extractVideosJs) { raw ->
-            val videos = parseJson(unescapeJs(raw))
-            if (videos.isNotEmpty()) {
+        webView?.evaluateJavascript(extractPhotosJs) { raw ->
+            val photos = parsePhotos(unescapeJs(raw))
+            if (photos.isNotEmpty()) {
                 requireActivity().runOnUiThread {
-                    allVideos.clear()
-                    allVideos.addAll(videos)
-                    videoAdapter.submitList(allVideos.toList())
+                    allPhotos.clear()
+                    allPhotos.addAll(photos)
+                    photoAdapter.submitList(allPhotos.toList())
                     binding.progressBar.visibility = View.GONE
                     binding.errorView.visibility = View.GONE
                     binding.swipeRefresh.isRefreshing = false
                 }
-            } else {
-                handler.postDelayed({ schedulePoll() }, pollIntervalMs)
-            }
+            } else handler.postDelayed({ schedulePoll() }, pollIntervalMs)
         }
     }
 
     private fun triggerLoadMore() {
         isLoadingMore = true
         currentPage++
-        footerAdapter.show()
         handler.removeCallbacksAndMessages(null)
         pollAttempts = 0
         webView?.loadUrl(buildPageUrl(currentPage))
     }
 
-    private fun pollForNewVideos(attempt: Int) {
+    private fun pollForNewPhotos(attempt: Int) {
         if (attempt >= maxPollAttempts) {
-            hasMorePages = false
-            isLoadingMore = false
-            requireActivity().runOnUiThread { footerAdapter.hide() }
-            return
+            hasMorePages = false; isLoadingMore = false; return
         }
-        val knownUrls = allVideos.map { it.url }.toHashSet()
-        webView?.evaluateJavascript(extractVideosJs) { raw ->
-            val newVideos = parseJson(unescapeJs(raw)).filter { it.url !in knownUrls }
-            if (newVideos.isNotEmpty()) {
+        val known = allPhotos.toHashSet()
+        webView?.evaluateJavascript(extractPhotosJs) { raw ->
+            val newPhotos = parsePhotos(unescapeJs(raw)).filter { it !in known }
+            if (newPhotos.isNotEmpty()) {
                 requireActivity().runOnUiThread {
-                    allVideos.addAll(newVideos)
-                    videoAdapter.submitList(allVideos.toList())
-                    footerAdapter.hide()
+                    allPhotos.addAll(newPhotos)
+                    photoAdapter.submitList(allPhotos.toList())
                     isLoadingMore = false
                 }
-            } else {
-                handler.postDelayed({ pollForNewVideos(attempt + 1) }, pollIntervalMs)
-            }
+            } else handler.postDelayed({ pollForNewPhotos(attempt + 1) }, pollIntervalMs)
         }
     }
 
-    private fun buildPageUrl(page: Int): String {
-        val base = arguments?.getString("url") ?: return ""
-        if (page <= 1) return base
-        val uri = android.net.Uri.parse(base)
-        val niche = uri.getQueryParameter("niche") ?: "all"
-        return "https://www.eroprofile.com/m/videos/search?niche=$niche&pnum=$page"
-    }
+    private fun buildPageUrl(page: Int): String =
+        if (page <= 1) baseUrl
+        else "https://www.eroprofile.com/m/photos/search?pnum=$page"
 
-    private fun parseJson(json: String): List<Video> = try {
+    private fun parsePhotos(json: String): List<String> = try {
         val arr = JSONArray(json)
         (0 until arr.length()).mapNotNull { i ->
-            val o = arr.getJSONObject(i)
-            val url = o.optString("url")
-            if (url.isEmpty()) null
-            else Video(
-                id = url.hashCode().toString(),
-                title = o.optString("title", "Video"),
-                url = url,
-                thumbnailUrl = o.optString("thumb"),
-                duration = o.optString("duration"),
-                category = o.optString("category", "")
-            )
+            arr.getJSONObject(i).optString("thumb").takeIf { it.isNotEmpty() }
         }
     } catch (_: Exception) { emptyList() }
 
@@ -244,18 +200,12 @@ class CategoryVideosFragment : Fragment() {
     }
 
     private fun loadFresh() {
-        val url = arguments?.getString("url") ?: run { showError("URL categoria mancante"); return }
         handler.removeCallbacksAndMessages(null)
-        currentPage = 1
-        pollAttempts = 0
-        isLoadingMore = false
-        hasMorePages = true
-        allVideos.clear()
-        videoAdapter.submitList(emptyList())
-        footerAdapter.hide()
+        currentPage = 1; pollAttempts = 0; isLoadingMore = false; hasMorePages = true
+        allPhotos.clear(); photoAdapter.submitList(emptyList())
         binding.progressBar.visibility = View.VISIBLE
         binding.errorView.visibility = View.GONE
-        webView?.loadUrl(url)
+        webView?.loadUrl(baseUrl)
     }
 
     private fun showError(msg: String) {
@@ -267,9 +217,44 @@ class CategoryVideosFragment : Fragment() {
 
     override fun onDestroyView() {
         handler.removeCallbacksAndMessages(null)
-        webView?.destroy()
-        webView = null
+        webView?.destroy(); webView = null
         _binding = null
         super.onDestroyView()
+    }
+
+    // ── Adapter ────────────────────────────────────────────────────────────────
+
+    inner class PhotoAdapter : ListAdapter<String, PhotoAdapter.PhotoHolder>(PhotoDiff()) {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = PhotoHolder(
+            LayoutInflater.from(parent.context).inflate(R.layout.item_photo, parent, false)
+        )
+
+        override fun onBindViewHolder(holder: PhotoHolder, position: Int) {
+            holder.bind(getItem(position))
+        }
+
+        inner class PhotoHolder(view: View) : RecyclerView.ViewHolder(view) {
+            private val img: ImageView = view.findViewById(R.id.imgPhoto)
+            fun bind(thumbUrl: String) {
+                val cookies = runCatching {
+                    CookieManager.getInstance().getCookie("https://www.eroprofile.com") ?: ""
+                }.getOrDefault("")
+                Glide.with(img.context)
+                    .load(GlideUrl(thumbUrl, LazyHeaders.Builder()
+                        .addHeader("Referer", "https://www.eroprofile.com/")
+                        .apply { if (cookies.isNotEmpty()) addHeader("Cookie", cookies) }
+                        .build()))
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .centerCrop()
+                    .placeholder(R.color.ep_surface_variant)
+                    .into(img)
+            }
+        }
+    }
+
+    private class PhotoDiff : DiffUtil.ItemCallback<String>() {
+        override fun areItemsTheSame(a: String, b: String) = a == b
+        override fun areContentsTheSame(a: String, b: String) = a == b
     }
 }
