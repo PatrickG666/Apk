@@ -30,6 +30,12 @@
             android:screenOrientation="sensor"
             android:theme="@style/Theme.EroProfile.FullScreen" />
 
+        <activity
+            android:name=".ui.photo.PhotoViewerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.EroProfile" />
+
     </application>
 
 </manifest>

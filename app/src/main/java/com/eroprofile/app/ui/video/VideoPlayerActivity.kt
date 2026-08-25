@@ -2,6 +2,7 @@ package com.eroprofile.app.ui.video
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import com.eroprofile.app.databinding.ActivityVideoPlayerBinding
 import java.io.ByteArrayInputStream
 
@@ -28,6 +30,8 @@ class VideoPlayerActivity : AppCompatActivity() {
     private var scraperWebView: WebView? = null
     private var streamFound = false
     private var pageUrl = ""
+    private var videoWidth = 0
+    private var videoHeight = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,12 +105,11 @@ class VideoPlayerActivity : AppCompatActivity() {
         binding.videoView.apply {
             setVideoURI(Uri.parse(streamUrl))
             setOnPreparedListener { mp ->
-                mp.setOnVideoSizeChangedListener { _, width, height ->
-                    if (width > 0 && height > 0) {
-                        val screenW = resources.displayMetrics.widthPixels
-                        val lp = binding.videoView.layoutParams as ConstraintLayout.LayoutParams
-                        lp.height = (screenW.toFloat() * height / width).toInt()
-                        binding.videoView.layoutParams = lp
+                mp.setOnVideoSizeChangedListener { _, w, h ->
+                    if (w > 0 && h > 0) {
+                        videoWidth = w
+                        videoHeight = h
+                        updateVideoLayout()
                     }
                 }
                 mp.setOnInfoListener { _, what, _ ->
@@ -118,6 +121,29 @@ class VideoPlayerActivity : AppCompatActivity() {
                 start()
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateVideoLayout()
+    }
+
+    private fun updateVideoLayout() {
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val cs = ConstraintSet()
+        cs.clone(binding.root)
+        if (isLandscape) {
+            cs.constrainHeight(binding.videoView.id, 0)
+            cs.connect(binding.videoView.id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM)
+        } else {
+            cs.clear(binding.videoView.id, ConstraintSet.BOTTOM)
+            val h = if (videoWidth > 0 && videoHeight > 0) {
+                val screenW = resources.displayMetrics.widthPixels
+                (screenW.toFloat() * videoHeight / videoWidth).toInt()
+            } else (200 * resources.displayMetrics.density).toInt()
+            cs.constrainHeight(binding.videoView.id, h)
+        }
+        cs.applyTo(binding.root)
     }
 
     override fun onPause() {
