@@ -2,7 +2,7 @@ package com.eroprofile.app.ui.video
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.res.Configuration
+import android.content.res.Configuration  // needed for onConfigurationChanged param
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
@@ -121,17 +121,9 @@ class VideoPlayerActivity : AppCompatActivity() {
     }
 
     private fun applyAspectRatio() {
+        if (videoWidth <= 0 || videoHeight <= 0) return
         val lp = binding.videoView.layoutParams as? ConstraintLayout.LayoutParams ?: return
-        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            lp.height = 0
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-        } else {
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
-            if (videoWidth > 0 && videoHeight > 0) {
-                val screenW = resources.displayMetrics.widthPixels
-                lp.height = (screenW.toFloat() * videoHeight / videoWidth).toInt()
-            }
-        }
+        lp.dimensionRatio = "$videoWidth:$videoHeight"
         binding.videoView.requestLayout()
     }
 
