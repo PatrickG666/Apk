@@ -464,6 +464,7 @@ class HomeFragment : Fragment() {
                     startActivity(Intent(requireContext(), PhotoViewerActivity::class.java).apply {
                         putExtra(PhotoViewerActivity.EXTRA_URL, photo.url)
                         putExtra(PhotoViewerActivity.EXTRA_TITLE, photo.title)
+                        putExtra(PhotoViewerActivity.EXTRA_THUMB, photo.thumb)
                     })
                 }
             }
